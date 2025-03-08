@@ -7,7 +7,7 @@ pub struct Tag {
     id: u64,
     priority: u64,
     name: String,
-    parent: Option<TagRef>
+    parent: Option<TagRef>,
 }
 
 #[derive(Debug)]

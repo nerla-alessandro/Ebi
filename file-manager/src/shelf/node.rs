@@ -9,8 +9,9 @@ use std::sync::RwLock;
 #[derive(Debug, Default)]
 pub struct Node {
     pub files: HashMap<PathBuf, FileRef>,
-    pub tags: HashMap<TagRef, BTreeSet<FileRef>>, // TODO: this should be changed to BTreeSet later
-    pub dtags: HashSet<TagRef>,                   // directory level tags, to be applied down
+    pub tags: HashMap<TagRef, BTreeSet<FileRef>>,
+    pub dtags: HashSet<TagRef>, // directory level tags, to be applied down
+    pub dtag_files: HashMap<TagRef, BTreeSet<FileRef>>, // files tagged with directory level tags
     pub directories: HashMap<PathBuf, Node>, // untagged: set of untagged files, support structure
 }
 
@@ -50,20 +51,40 @@ impl Node {
             files,
             tags: HashMap::new(),
             dtags: HashSet::new(),
+            dtag_files: HashMap::new(),
             directories,
         })
     }
 
-    pub fn attach_dtag(&mut self, tag: TagRef) -> bool {
-        self.dtags.insert(tag.clone())
+    pub fn attach_dtag(&mut self, dtag: TagRef) -> bool {
+        self.dtags.insert(dtag)
     }
 
-    pub fn detach_dtag(&mut self, tag: TagRef) -> bool {
-        self.dtags.remove(&tag)
+    pub fn detach_dtag(&mut self, dtag: TagRef) -> bool {
+        self.dtags.remove(&dtag)
     }
 
     pub fn attach(&mut self, tag: TagRef, file: FileRef) -> bool {
         let set = self.tags.entry(tag).or_insert_with(|| BTreeSet::new());
         set.insert(file.clone())
+    }
+
+    pub fn detach(&mut self, tag: TagRef, file: Option<FileRef>) -> bool {
+        match file {
+            Some(file) => {
+                let set = self.tags.get_mut(&tag);
+                match set {
+                    Some(set) => {
+                        let res = set.remove(&file);
+                        if set.is_empty() {
+                            self.tags.remove(&tag);
+                        }
+                        res
+                    }
+                    None => false,
+                }
+            }
+            None => self.tags.remove(&tag).is_some(),
+        }
     }
 }

@@ -138,11 +138,19 @@ impl File {
         }
     }
 
-    pub fn add_tag(&mut self, tag: TagRef) -> bool {
+    pub fn attach(&mut self, tag: TagRef) -> bool {
         self.tags.insert(tag)
     }
 
-    pub fn remove_tag(&mut self, tag: TagRef) -> bool {
+    pub fn detach(&mut self, tag: TagRef) -> bool {
         self.tags.remove(&tag)
+    }
+
+    pub fn attach_dtag(&mut self, tag: TagRef) -> bool {
+        self.dtags.insert(tag)
+    }
+
+    pub fn detach_dtag(&mut self, tag: TagRef) -> bool {
+        self.dtags.remove(&tag)
     }
 }
