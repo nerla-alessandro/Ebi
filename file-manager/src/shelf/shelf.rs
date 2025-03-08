@@ -9,7 +9,7 @@ use std::result::Result;
 // Shelf
 #[derive(Debug)]
 pub struct Shelf {
-    pub root: Node,
+    root: Node,
     root_path: PathBuf,
     // String = Workspace identifier + Global
 }
@@ -42,7 +42,8 @@ impl Shelf {
 
         // if stripped_path is none, file must be self.root
         if let Some(path) = stripped_path {
-            for dir in path.ancestors() {
+            for dir in path.components() {
+                let dir: PathBuf = dir.as_os_str().into();
                 // skip empty path (root dir)
                 // this is needed because ancestors gives
                 // see https://github.com/rust-lang/rust/issues/54927
@@ -50,7 +51,7 @@ impl Shelf {
                     continue;
                 }
 
-                let child = curr_node.directories.remove(dir).unwrap();
+                let child = curr_node.directories.remove(&dir).unwrap();
 
                 // Store the current node (ownership moved)
                 node_v.push((dir.to_path_buf(), curr_node));
@@ -67,12 +68,12 @@ impl Shelf {
         let file = file.clone();
         let res = file.file_ref.write().unwrap().add_tag(tag.clone());
 
-        if res {
-            for (pbuf, mut node) in node_v.into_iter().rev() {
+        for (pbuf, mut node) in node_v.into_iter().rev() {
+            if res {
                 node.attach(tag.clone(), file.clone());
-                let child = std::mem::replace(&mut curr_node, node);
-                curr_node.directories.insert(pbuf, child);
             }
+            let child = std::mem::replace(&mut curr_node, node);
+            curr_node.directories.insert(pbuf, child);
         }
 
         self.root = curr_node;
