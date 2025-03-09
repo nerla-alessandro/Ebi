@@ -48,7 +48,10 @@ impl Shelf {
             for dir in path.components() {
                 let dir: PathBuf = dir.as_os_str().into();
 
-                let child = curr_node.directories.remove(&dir).unwrap();
+                let child = curr_node
+                    .directories
+                    .remove(&dir)
+                    .ok_or_else(|| UpdateErr::PathNotFound)?;
 
                 // Store the current node (ownership moved)
                 node_v.push((dir.to_path_buf(), curr_node));
@@ -94,7 +97,10 @@ impl Shelf {
                     for dir in path.components() {
                         let dir: PathBuf = dir.as_os_str().into();
 
-                        let child = curr_node.directories.remove(&dir).unwrap();
+                        let child = curr_node
+                            .directories
+                            .remove(&dir)
+                            .ok_or_else(|| UpdateErr::PathNotFound)?;
 
                         // Store the current node (ownership moved)
                         node_v.push((dir.to_path_buf(), curr_node));
@@ -124,9 +130,10 @@ impl Shelf {
             None => {
                 fn recursive_detach(node: &mut Node, tag: TagRef) {
                     node.detach(tag.clone(), None);
-                    node.directories.iter_mut().for_each(|(_, node)| {
+
+                    for (_, node) in node.directories.iter_mut() {
                         recursive_detach(node, tag.clone());
-                    });
+                    }
                 }
 
                 let res = self.root.tags.get(&tag).is_some();
@@ -154,13 +161,16 @@ impl Shelf {
         let mut curr_node = &mut self.root;
         for dir in dpath.components() {
             let dir: PathBuf = dir.as_os_str().into();
-            let child = curr_node.directories.get_mut(&dir).unwrap();
+            let child = curr_node
+                .directories
+                .get_mut(&dir)
+                .ok_or_else(|| UpdateErr::PathNotFound)?;
             if child.dtags.contains(&dtag) {
                 dtagged_parent = true;
             }
             curr_node = child;
         }
-        if dtagged_parent {         
+        if dtagged_parent {
             return Ok(curr_node.attach_dtag(dtag.clone()));
         }
 
@@ -171,7 +181,10 @@ impl Shelf {
         // if dpath is none, dir must be self.root
         for dir in dpath.components() {
             let dir: PathBuf = dir.as_os_str().into();
-            let child = curr_node.directories.remove(&dir).unwrap();
+            let child = curr_node
+                .directories
+                .remove(&dir)
+                .ok_or_else(|| UpdateErr::PathNotFound)?;
             // Store the current node (ownership moved)
             node_v.push((dir.to_path_buf(), curr_node));
             // Move to the child node
@@ -190,22 +203,26 @@ impl Shelf {
             files.append(&mut subdir_files);
 
             fn add_dtag_files(node: &mut Node, dtag: TagRef, files: BTreeSet<FileRef>) {
-                let set = node.dtag_files
-                .entry(dtag)
-                .or_insert_with(|| BTreeSet::new());
+                let set = node
+                    .dtag_files
+                    .entry(dtag)
+                    .or_insert_with(|| BTreeSet::new());
                 files.iter().for_each(|f| {
                     set.insert(f.clone());
                 });
             }
 
             add_dtag_files(node, dtag, files.clone());
-            return files
+            return files;
         }
 
         let files = recursive_attach(&mut curr_node, dtag.clone());
 
         for (pbuf, mut node) in node_v.into_iter().rev() {
-            let set = node.dtag_files.entry(dtag.clone()).or_insert_with(|| BTreeSet::new());
+            let set = node
+                .dtag_files
+                .entry(dtag.clone())
+                .or_insert_with(|| BTreeSet::new());
             set.append(&mut files.clone());
             let child = std::mem::replace(&mut curr_node, node);
             curr_node.directories.insert(pbuf, child);
@@ -227,13 +244,16 @@ impl Shelf {
         let mut curr_node = &mut self.root;
         for dir in dpath.components() {
             let dir: PathBuf = dir.as_os_str().into();
-            let child = curr_node.directories.get_mut(&dir).unwrap();
+            let child = curr_node
+                .directories
+                .get_mut(&dir)
+                .ok_or_else(|| UpdateErr::PathNotFound)?;
             if child.dtags.contains(&dtag) {
                 dtagged_parent = true;
             }
             curr_node = child;
         }
-        if dtagged_parent {         
+        if dtagged_parent {
             return Ok(curr_node.detach_dtag(dtag.clone()));
         }
 
@@ -244,7 +264,10 @@ impl Shelf {
         // if dpath is none, dir must be self.root
         for dir in dpath.components() {
             let dir: PathBuf = dir.as_os_str().into();
-            let child = curr_node.directories.remove(&dir).unwrap();
+            let child = curr_node
+                .directories
+                .remove(&dir)
+                .ok_or_else(|| UpdateErr::PathNotFound)?;
             // Store the current node (ownership moved)
             node_v.push((dir.to_path_buf(), curr_node));
             // Move to the child node
@@ -254,6 +277,11 @@ impl Shelf {
         let res = curr_node.detach_dtag(dtag.clone());
 
         fn recursive_detach(node: &mut Node, dtag: TagRef) -> BTreeSet<FileRef> {
+            // Stop detaching the dtag when encountering a child node already dtagged with it
+            if node.dtags.contains(&dtag) {
+                return BTreeSet::new();
+            }
+
             let mut files = node.files.values().cloned().collect::<BTreeSet<FileRef>>();
             let mut subdir_files = BTreeSet::new();
             for (_, subnode) in node.directories.iter_mut() {
@@ -273,12 +301,12 @@ impl Shelf {
                             node.dtag_files.remove(&dtag);
                         }
                     }
-                    None => (), //[!] Critical Internal Error
+                    None => (), //[!] Critical Internal Error 
                 }
             }
 
             remove_dtag_files(node, dtag, files.clone());
-            return files
+            return files;
         }
 
         let files = recursive_detach(&mut curr_node, dtag.clone());
@@ -293,7 +321,7 @@ impl Shelf {
                     let child = std::mem::replace(&mut curr_node, node);
                     curr_node.directories.insert(pbuf, child);
                 }
-                None => (), //[!] Internal Error
+                None => (), //[!] Internal Error 
             }
         }
 
@@ -303,10 +331,9 @@ impl Shelf {
 
         Ok(res)
     }
-
 }
 
-// [TODO]: define extensive errors
+// [TODO]: define extensive errors 
 #[derive(Debug)]
 pub enum UpdateErr {
     PathNotFound,

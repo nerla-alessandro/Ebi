@@ -72,16 +72,14 @@ impl Node {
     pub fn detach(&mut self, tag: TagRef, file: Option<FileRef>) -> bool {
         match file {
             Some(file) => {
-                let set = self.tags.get_mut(&tag);
-                match set {
-                    Some(set) => {
-                        let res = set.remove(&file);
-                        if set.is_empty() {
-                            self.tags.remove(&tag);
-                        }
-                        res
+                if let Some(set) = self.tags.get_mut(&tag) {
+                    let res = set.remove(&file);
+                    if set.is_empty() {
+                        self.tags.remove(&tag);
                     }
-                    None => false,
+                    res
+                } else {
+                    false
                 }
             }
             None => self.tags.remove(&tag).is_some(),
