@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 
@@ -58,3 +59,17 @@ impl Ord for TagRef {
 }
 
 impl Eq for TagRef {}
+
+//[#] We require a tag manmager
+pub struct TagManager {
+    tags: HashMap<String, TagRef>,
+}
+
+impl TagManager {
+    pub fn retrieve_tag(name: &str) -> Option<TagRef> {
+        println!("Retrieving tag {}", name);
+        return Some(TagRef {
+            tag_ref: Arc::new(RwLock::new(Tag::default())),
+        });
+    }
+}

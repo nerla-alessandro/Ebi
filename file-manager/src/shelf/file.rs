@@ -24,25 +24,25 @@ pub struct File {
     dtags: BTreeSet<TagRef>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileMetadata {
-    size: u64,
-    readonly: bool,
-    modified: Option<DateTime<Utc>>,
-    accessed: Option<DateTime<Utc>>,
-    created: Option<DateTime<Utc>>,
-    unix: Option<UnixMetadata>,
-    windows: Option<WindowsMetadata>,
+    pub size: u64,
+    pub readonly: bool,
+    pub modified: Option<DateTime<Utc>>,
+    pub accessed: Option<DateTime<Utc>>,
+    pub created: Option<DateTime<Utc>>,
+    pub unix: Option<UnixMetadata>,
+    pub windows: Option<WindowsMetadata>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct UnixMetadata {
     permissions: u32,
     uid: u32,
     gid: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct WindowsMetadata {
     attributes: u32,
 }

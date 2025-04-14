@@ -25,11 +25,24 @@ impl Shelf {
         })
     }
 
-    pub async fn refresh(&self) -> Result<bool, io::Error> {
-        todo!();
+    pub async fn retrieve(&self, tag: TagRef) -> BTreeSet<FileRef> {
+        let mut res = self
+            .root
+            .tags
+            .get(&tag)
+            .cloned()
+            .unwrap_or_else(|| BTreeSet::<FileRef>::new());
+        let mut dres = self
+            .root
+            .dtag_files
+            .get(&tag)
+            .cloned()
+            .unwrap_or_else(|| BTreeSet::<FileRef>::new());
+        res.append(&mut dres);
+        res
     }
 
-    pub fn query(&self, query: Query) -> Result<Vec<&'static File>, QueryErr> {
+    pub async fn refresh(&self) -> Result<bool, io::Error> {
         todo!();
     }
 
@@ -301,7 +314,7 @@ impl Shelf {
                             node.dtag_files.remove(&dtag);
                         }
                     }
-                    None => (), //[!] Critical Internal Error 
+                    None => (), //[!] Critical Internal Error
                 }
             }
 
@@ -321,7 +334,7 @@ impl Shelf {
                     let child = std::mem::replace(&mut curr_node, node);
                     curr_node.directories.insert(pbuf, child);
                 }
-                None => (), //[!] Internal Error 
+                None => (), //[!] Internal Error
             }
         }
 
@@ -333,7 +346,7 @@ impl Shelf {
     }
 }
 
-// [TODO]: define extensive errors 
+// [TODO]: define extensive errors
 #[derive(Debug)]
 pub enum UpdateErr {
     PathNotFound,
