@@ -1,58 +1,137 @@
 #![allow(dead_code)]
-
-use crate::tag::{Tag, TagRef};
 use shelf::shelf::Shelf;
-use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use iroh::{SecretKey, Endpoint,
+    endpoint::Connection,
+    NodeId,
+};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::task::JoinHandle;
+use anyhow::Result;
+use tokio::sync::{RwLock, Mutex};
+use tower::{Service, ServiceBuilder};
+use std::net::SocketAddr;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, AsyncBufReadExt, AsyncRead};
+use std::collections::HashMap;
+use crate::services::peer::{PeerService, Client};
+use crate::services::rpc::{RpcService, TaskID};
+use crate::rpc::{QueryRequest, RequestCode, EchoData};
+use prost::Message;
+
+use std::time::Instant;
+use tokio::time::{sleep, Duration};
 
 mod query;
 mod shelf;
 mod tag;
+mod services;
+mod workspace;
+mod rpc;
 
-fn main() {
-    let path = PathBuf::from(".\\A\\B\\C\\D\\E\\File.txt");
-    let stripped_path = path.strip_prefix(".").unwrap().parent();
+const ALPN: &[u8] = b"ebi";
 
-    println!("{:?}", stripped_path);
-
-    println!("Components");
-    // if stripped_path is none, file must be self.root
-    if let Some(path) = stripped_path {
-        for dir in path.components() {
-            let dir: PathBuf = dir.as_os_str().into();
-            println!("{:?}", dir);
-
-            if dir.as_os_str().is_empty() {
-                continue;
+#[tokio::main]
+async fn main() -> Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
+    let sec_key = get_secret_key();
+    let ep = Endpoint::builder()
+        .discovery_n0()
+        .secret_key(sec_key)
+        .alpns(vec![ALPN.to_vec()])
+        .bind()
+        .await?;
+    println!("{:?}", ep.node_addr().await?.node_id.as_bytes());
+    println!("{:?}", ep.node_addr().await?.node_id);
+    let peers = Arc::new(RwLock::new(HashMap::<NodeId, Connection>::new()));
+    let clients = Arc::new(RwLock::new(Vec::<Client>::new()));
+    let tasks = Arc::new(HashMap::<TaskID, JoinHandle<()>>::new());
+    let service = ServiceBuilder::new().service(RpcService {  peer_service: PeerService { peers: peers.clone(), clients: clients.clone() }, tasks: tasks.clone() } );
+    loop {
+        tokio::select! {
+            Ok((stream, addr)) = listener.accept() => {
+                let service = service.clone();
+                let stream: Arc<Mutex<TcpStream>> = Arc::new(Mutex::new(stream));
+                let client = Client {
+                    hash: 0,
+                    addr,
+                    stream: stream.clone()
+                };
+                clients.write().await.push(client);
+                tokio::spawn(async move {
+                    handle_client(stream.clone(), addr, service).await;
+                });
+            },
+            conn = ep.accept() => {
+                let conn = conn.unwrap().await?;
+                peers.write().await.insert(conn.remote_node_id().unwrap(), conn.clone());
+                let (mut send, mut recv) = conn.accept_bi().await?;
+                let msg = recv.read_to_end(100).await?;
             }
         }
     }
+}
 
-    println!("Ancestors");
-    // if stripped_path is none, file must be self.root
-    if let Some(path) = stripped_path {
-        for dir in path.ancestors().next().unwrap() {
-            println!("{:?}", dir);
+async fn handle_client(mut socket: Arc<Mutex<TcpStream>>, addr: SocketAddr, mut service: RpcService) {
+    let mut header = vec![0; 9];
+    let mut socket = socket.lock().await;
 
-            if dir.is_empty() {
-                continue;
+    loop {
+        let bytes_read = match socket.read_exact(&mut header).await {
+            Ok(n) if n == 0 => {println!("{}", n); break},
+            Ok(n) => n,
+            Err(e) => {println!("{:?}", e); 9},
+        };
+
+        let req_type: u8 = u8::from_le_bytes([header[0]]);
+        println!("req_type: {}", req_type);
+        let size: u64 = u64::from_le_bytes(header[1..9].try_into().unwrap());
+        println!("size: {}", size);
+        let mut buffer = vec![0u8; size as usize];
+        let bytes_read = match socket.read_exact(&mut buffer).await {
+            Ok(n) if n == 0 => 0,
+            Ok(n) => n,
+            Err(e) => {println!("{:?}", e); 0},
+        };
+        println!("read all");
+        let req_res = match req_type.try_into() {
+            Ok(RequestCode::Query) => {
+                let req = QueryRequest::decode(&*buffer).unwrap();
+                if let Ok(response) = service.call(req).await {
+                    let mut buf = Vec::new();
+                    response.encode(&mut buf).unwrap();
+                    let _ = socket.write_all(&buf).await;
+                }
+                Ok(())
             }
-        }
+            Ok(RequestCode::Echo) => {
+
+                let start = Instant::now();
+                let req = EchoData::decode(&*buffer).unwrap();
+                let elapsed = start.elapsed();
+                println!("Total execution time for both tasks: {:?}", elapsed);
+                if let Ok(response) = service.call(req).await {
+                    let mut buf = vec![1];
+                    buf[0] = 42;
+                    response.encode_to_vec();
+                    let _ = socket.write_all(&buf).await;
+                    let vec = &response.encode_to_vec();
+                    println!("vlen {}", vec.len());
+                    socket.write_all(&vec).await.unwrap();
+                }
+                Ok(())
+            }
+            Err(_) => {
+                println!("Unknown header {}", req_type);
+                Err(())
+            }
+        };
+
+
     }
-    // Test
-    //Shelf::new(PathBuf::from("C:\\Users\\Alessandro\\Desktop\\Projects\\Tag-Based File Manager\\Automated Test Procedures\\Tests\\Workspaces\\Generated\\Directory"));
-    //    let mut shelf = Shelf::new(PathBuf::from(
-    //        "/home/yamabiko/Projects/ebi/Automated Test Procedures/Tests/Workspaces/Generated/Test/",
-    //    ))
-    //    .unwrap();
-    //    let tag = Tag::default();
-    //
-    //    let tref = TagRef {
-    //        tag_ref: Arc::new(RwLock::new(tag)),
-    //    };
-    //
-    //    let file = PathBuf::from("/home/yamabiko/Projects/ebi/Automated Test Procedures/Tests/Workspaces/Generated/Test/4EZ3WpsO/hiLQFdlc.dat");
-    //    if let Err(e) = shelf.attach(file, tref) {
-    //        eprintln!("{:?}", e);
-    //    }
+    println!("Client disconnected: {}", addr);
+}
+
+fn get_secret_key() -> SecretKey {
+    let mut rng = rand::rngs::OsRng;
+    iroh_base::SecretKey::generate(&mut rng)
 }

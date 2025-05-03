@@ -1,0 +1,56 @@
+syntax = "proto3";
+package ebi_rpc;
+
+service Daemon {
+  rpc Query (QueryRequest) returns (QueryResponse);
+}
+
+enum FileOrd {
+  NAME = 0;
+  SIZE = 1;
+  MODIFIED = 2;
+  ACCESSED = 3;
+  CREATED = 4;
+}
+
+message EchoData {
+  repeated bytes data = 1;
+}
+
+message QueryRequest {
+  string query = 1;
+  FileOrd file_ord = 2;
+  bool ascending = 3;
+  int32 workspace_id = 4;
+  bool partial = 5;
+  int32 client_id = 6; //probably wrapped somewhere else ?
+}
+
+message FileMetadata {
+  uint64 size = 1;
+  bool readonly = 2;
+  uint64 modified = 3;
+  uint64 accessed = 4;
+  uint64 created = 5;
+  UnixMetadata unix = 6;
+  WindowsMetadata windows = 7;
+}
+
+message UnixMetadata {
+  uint32 permissions = 1;
+  uint32 uid = 2;
+  uint32 gid = 3;
+}
+
+message WindowsMetadata {
+  uint32 attributes = 1;
+}
+
+message File {
+  string path = 1;
+  FileMetadata metadata = 2;
+}
+
+message QueryResponse {
+  repeated File files = 1;
+}

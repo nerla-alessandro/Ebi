@@ -301,60 +301,62 @@ impl<T: FileOrder + Clone> Query<T> {
         })
     }
 
-    pub fn evaluate(&mut self) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr>
+    pub async fn evaluate<R>(&mut self, ret_service: R) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr>
     where
         OrderedFileID<T>: Ord,
+        R: RetrieveService + Clone
     {
         self.simplify();
-        Query::recursive_evaluate(self.formula.clone())
+        Query::recursive_evaluate(self.formula.clone(), ret_service.clone()).await
     }
 
-    fn recursive_evaluate(formula: Formula) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr>
+    async fn recursive_evaluate<R>(formula: Formula, ret_service: R) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr>
     where
         OrderedFileID<T>: Ord,
+        R: RetrieveService + Clone
     {
         match formula {
             Formula::BinaryExpression(BinaryOp::AND, x, y) => match (*x.clone(), *y.clone()) {
                 (_, Formula::UnaryExpression(UnaryOp::NOT, b)) => {
-                    let a = Query::recursive_evaluate(*x.clone())?;
-                    let b = Query::recursive_evaluate(*b.clone())?;
+                    let a = Query::recursive_evaluate(*x.clone(), ret_service.clone()).await?;
+                    let b = Query::recursive_evaluate(*b.clone(), ret_service.clone()).await?;
                     let x: BTreeSet<OrderedFileID<T>> = a.difference(&b).cloned().collect();
                     Ok(x)
                 }
                 (Formula::UnaryExpression(UnaryOp::NOT, a), _) => {
-                    let a = Query::recursive_evaluate(*a.clone())?;
-                    let b = Query::recursive_evaluate(*y.clone())?;
+                    let a = Query::recursive_evaluate(*a.clone(), ret_service.clone()).await?;
+                    let b = Query::recursive_evaluate(*y.clone(), ret_service.clone()).await?;
                     let x: BTreeSet<OrderedFileID<T>> = b.difference(&a).cloned().collect();
                     Ok(x)
                 }
                 (a, b) => {
-                    let a = Query::recursive_evaluate(a.clone())?;
-                    let b = Query::recursive_evaluate(b.clone())?;
+                    let a = Query::recursive_evaluate(a.clone(), ret_service.clone()).await?;
+                    let b = Query::recursive_evaluate(b.clone(), ret_service.clone()).await?;
                     let x: BTreeSet<OrderedFileID<T>> = a.intersection(&b).cloned().collect();
                     Ok(x)
                 }
             },
             Formula::BinaryExpression(BinaryOp::OR, x, y) => {
-                let a = Query::recursive_evaluate(*x.clone())?;
-                let b = Query::recursive_evaluate(*y.clone())?;
+                let a = Query::recursive_evaluate(*x.clone(), ret_service.clone()).await?;
+                let b = Query::recursive_evaluate(*y.clone(), ret_service.clone()).await?;
                 let x: BTreeSet<OrderedFileID<T>> = a.union(&b).cloned().collect();
                 Ok(x)
             }
             Formula::BinaryExpression(BinaryOp::XOR, x, y) => {
-                let a = Query::recursive_evaluate(*x.clone())?;
-                let b = Query::recursive_evaluate(*y.clone())?;
+                let a = Query::recursive_evaluate(*x.clone(), ret_service.clone()).await?;
+                let b = Query::recursive_evaluate(*y.clone(), ret_service.clone()).await?;
                 let x: BTreeSet<OrderedFileID<T>> = a.symmetric_difference(&b).cloned().collect();
                 Ok(x)
             }
             Formula::UnaryExpression(UnaryOp::NOT, x) => {
-                let a = MockCacheService::get_all()?;
-                let b = Query::recursive_evaluate(*x.clone())?;
+                let a = ret_service.get_all().await?;
+                let b = Query::recursive_evaluate(*x.clone(), ret_service).await?;
                 let x: BTreeSet<OrderedFileID<T>> = a.difference(&b).cloned().collect();
                 Ok(x)
             }
             Formula::Proposition(p) => {
                 if let Some(tag) = p.tag {
-                    MockCacheService::get_files(tag.clone()).map_err(|_| QueryErr::KeyError)
+                    ret_service.get_files(tag.clone()).await.map_err(|_| QueryErr::KeyError)
                 } else {
                     return Err(QueryErr::KeyError);
                 }
@@ -520,20 +522,15 @@ pub enum QueryErr {
     KeyError,    // The Query uses tags which do not exist
 }
 
-//[!] Placeholder for CacheService 
+//[!] Wrapper for a cacheservice.call() ?
 
-pub struct MockCacheService {}
+pub trait RetrieveService {
 
-impl MockCacheService {
-    pub fn new() -> Self {
-        MockCacheService {}
-    }
-
-    pub fn get_files<T: FileOrder>(tag: TagRef) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr> {
+    async fn get_files<T: FileOrder>(&self, tag: TagRef) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr> {
         todo!();
     }
 
-    pub fn get_all<T: FileOrder>() -> Result<BTreeSet<OrderedFileID<T>>, QueryErr> {
+    async fn get_all<T: FileOrder>(&self) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr> {
         todo!();
     }
 }
