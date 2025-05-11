@@ -1,0 +1,40 @@
+syntax = "proto3";
+package ebi.file;
+
+message FileOrd {
+    OrderBy order_by = 1;
+    bool ascending = 2;
+}
+
+enum OrderBy {
+    NAME = 0;
+    SIZE = 1;
+    MODIFIED = 2;
+    ACCESSED = 3;
+    CREATED = 4;
+}
+
+message FileMetadata {
+    uint64 size = 1;
+    bool readonly = 2;
+    uint64 modified = 3;
+    uint64 accessed = 4;
+    uint64 created = 5;
+    UnixMetadata unix = 6;
+    WindowsMetadata windows = 7;
+}
+
+message UnixMetadata {
+    uint32 permissions = 1;
+    uint32 uid = 2;
+    uint32 gid = 3;
+}
+
+message WindowsMetadata {
+    uint32 attributes = 1;
+}
+
+message File {
+    string path = 1;
+    FileMetadata metadata = 2;
+}
