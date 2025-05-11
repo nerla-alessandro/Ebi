@@ -1,56 +1,191 @@
 syntax = "proto3";
-package ebi_rpc;
+package ebi.rpc;
 
-service Daemon {
-  rpc Query (QueryRequest) returns (QueryResponse);
+import "file.proto";
+
+message RequestMetadata {
+  uint64 source_id = 1;
+  uint64 request_id = 2;
 }
 
-enum FileOrd {
-  NAME = 0;
-  SIZE = 1;
-  MODIFIED = 2;
-  ACCESSED = 3;
-  CREATED = 4;
+message ResponseMetadata {
+  uint64 request_id = 1;
+  uint32 return_code = 2;
 }
 
-message EchoData {
-  repeated bytes data = 1;
-}
+//[x] Query Protocol 
 
-message QueryRequest {
+message ClientQueryRequest {
   string query = 1;
-  FileOrd file_ord = 2;
-  bool ascending = 3;
-  int32 workspace_id = 4;
+  file.FileOrd file_ord = 2;
+  uint64 workspace_id = 4;
   bool partial = 5;
-  int32 client_id = 6; //probably wrapped somewhere else ?
+  RequestMetadata metadata = 6;
 }
 
-message FileMetadata {
-  uint64 size = 1;
-  bool readonly = 2;
-  uint64 modified = 3;
-  uint64 accessed = 4;
-  uint64 created = 5;
-  UnixMetadata unix = 6;
-  WindowsMetadata windows = 7;
-}
-
-message UnixMetadata {
-  uint32 permissions = 1;
-  uint32 uid = 2;
-  uint32 gid = 3;
-}
-
-message WindowsMetadata {
-  uint32 attributes = 1;
-}
-
-message File {
-  string path = 1;
-  FileMetadata metadata = 2;
+message PeerQueryRequest {
+  bytes query = 1;
+  uint64 workspace_id = 3;
+  RequestMetadata metadata = 4;
 }
 
 message QueryResponse {
-  repeated File files = 1;
+  uint64 token = 1;
+  uint32 packets = 2;
+  ResponseMetadata metadata = 3;
+}
+
+message ClientQueryData {
+  uint64 token = 1;
+  uint32 return_code = 2;
+  repeated file.File files = 3;
+}
+
+message PeerQueryData {
+  uint64 token = 1;
+  uint32 return_code = 2;
+  bytes files = 3;
+}
+
+//[x] Workspace Operations 
+
+message CreateWorkspace {
+  string name = 1;
+  string description = 2;
+  RequestMetadata metadata = 3;
+}
+
+message EditWorkspace {
+  uint64 workspace_id = 1;
+  string name = 2;
+  string description = 3;
+  RequestMetadata metadata = 4;
+}
+
+message EditWorkspaceResponse {
+  ResponseMetadata metadata = 1;
+}
+
+message CreateWorkspaceResponse {
+  uint64 workspace_id = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message DeleteWorkspace {
+  uint64 workspace_id = 1;
+  RequestMetadata metadata = 4;
+}
+
+message DeleteWorkspaceResponse {
+  ResponseMetadata metadata = 1;
+}
+
+message getWorkspaces {
+  RequestMetadata metadata = 1;
+}
+
+message WorkspaceList {
+  repeated Workspace workspaces = 1;
+}
+
+message Workspace {
+  uint64 workspace_id = 1;
+  string name = 2;
+  string description = 3;
+}
+
+//[x] Shelf Operations 
+
+message addShelf {
+  string path = 1; //[/] Peer ID (#) is in the Path (#://root/folder/subfolder) 
+  string name = 2;
+  uint64 workspace_id = 3;
+  RequestMetadata metadata = 4;
+}
+
+message addShelfResponse {
+  uint64 shelf_id = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message getShelves {
+  uint64 workspace_id = 1;
+  RequestMetadata metadata = 2;
+}
+
+message ShelfList {
+  repeated Shelf shelves = 1;
+}
+
+message Shelf {
+  uint64 shelf_id = 1;
+  string name = 2;
+  string path = 3; //[/] Peer ID (#) is in the Path (#://root/folder/subfolder) 
+}
+
+message RemoveShelf {
+  uint64 shelf_id = 1;
+  uint64 workspace_id = 2;
+  optional uint64 peer_id = 3;
+  RequestMetadata metadata = 4;
+}
+
+message RemoveShelfResponse {
+  ResponseMetadata metadata = 1;
+}
+
+//[x] Tag Operations 
+
+message CreateTag {
+  string name = 1;
+  uint64 priority = 2;
+  optional uint64 parent_id = 3;
+  RequestMetadata metadata = 4;
+}
+
+message CreateTagResponse {
+  uint64 tag_id = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message EditTag {
+  uint64 tag_id = 1;
+  string name = 2;
+  uint64 priority = 3;
+  uint64 parent_id = 4;
+  RequestMetadata metadata = 5;
+}
+
+message EditTagResponse {
+  ResponseMetadata metadata = 1;
+}
+
+message AttachTag {
+  uint64 tag_id = 1;
+  string path = 2; //[/] Peer ID (#) is in the Path (#://root/folder/subfolder) 
+  uint64 workspace = 3;
+  RequestMetadata metadata = 4;
+}
+
+message AttachTagResponse {
+  ResponseMetadata metadata = 1;
+}
+
+message DetachTag {
+  uint64 tag_id = 1;
+  string path = 2; //[/] Peer ID (#) is in the Path (#://root/folder/subfolder) 
+  RequestMetadata metadata = 3;
+}
+
+message DetachTagResponse {
+  ResponseMetadata metadata = 1;
+}
+
+message DeleteTag {
+  uint64 tag_id = 1;
+  RequestMetadata metadata = 2;
+}
+
+message DeleteTagResponse {
+  ResponseMetadata metadata = 1;
 }
