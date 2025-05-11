@@ -6,3 +6,6 @@ Automated Test Procedures/Tests/Workspaces/Generated/**/*
 **/target/
 **/*.rs.bk
 Automated Test Procedures/Tests/Workspaces/Generated/TestDir.tag
+
+# Ignore Design Documents
+design/**/*
