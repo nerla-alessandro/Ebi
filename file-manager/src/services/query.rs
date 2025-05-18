@@ -1,6 +1,6 @@
 use tower::{Service};
 use std::{sync::Arc, future::Future, pin::Pin, task::{Context, Poll}};
-use crate::query::{Query, FileOrder, RetrieveService, QueryErr, OrderedFileID};
+use crate::query::{Query, FileOrder, RetrieveService, QueryErr, OrderedFileID, RetrieveErr};
 use crate::services::cache::CacheService;
 use crate::services::peer::PeerService;
 use std::collections::BTreeSet;
@@ -25,11 +25,11 @@ struct Retrieve {
 }
 
 impl RetrieveService for Retrieve {
-    async fn get_files<T: FileOrder>(&self, tag: TagRef) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr> {
+    async fn get_files<T: FileOrder>(&self, uuid: (u64, u64)) -> Result<BTreeSet<OrderedFileID<T>>, RetrieveErr> {
         todo!();
     }
 
-    async fn get_all<T: FileOrder>(&self) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr> {
+    async fn get_all<T: FileOrder>(&self) -> Result<BTreeSet<OrderedFileID<T>>, RetrieveErr> {
         todo!();
     }
 }

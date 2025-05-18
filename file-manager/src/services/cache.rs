@@ -6,11 +6,12 @@ use crate::tag::TagRef;
 use std::path::PathBuf;
 use std::collections::{BTreeSet, HashMap};
 use crate::query::{OrderedFileID, FileOrder};
-
+use crate::tag::TagManager;
 
 #[derive(Clone)]
 pub struct CacheService {
     peer_service: PeerService,
+    tag_manager: Arc<RwLock<TagManager>>,
     workspaces: Arc<RwLock<HashMap<WorkspaceId, Workspace>>>
 }
 

@@ -11,6 +11,8 @@ struct ShelfInfo {
 
 pub struct Workspace {
     id: WorkspaceId,
+    name: String,
+    description: String,
     local_shelves: ShelfInfo,
     remote_shelves: (ShelfInfo, NodeId)
 }

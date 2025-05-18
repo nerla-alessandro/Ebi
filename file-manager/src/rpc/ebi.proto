@@ -11,6 +11,11 @@ message RequestMetadata {
 message ResponseMetadata {
   uint64 request_id = 1;
   uint32 return_code = 2;
+  optional ErrorData error_data = 3;
+}
+
+message ErrorData {
+  repeated string error_data = 1;
 }
 
 //[x] Query Protocol 
@@ -80,7 +85,7 @@ message DeleteWorkspaceResponse {
   ResponseMetadata metadata = 1;
 }
 
-message getWorkspaces {
+message GetWorkspaces {
   RequestMetadata metadata = 1;
 }
 
@@ -96,19 +101,19 @@ message Workspace {
 
 //[x] Shelf Operations 
 
-message addShelf {
+message AddShelf {
   string path = 1; //[/] Peer ID (#) is in the Path (#://root/folder/subfolder) 
   string name = 2;
   uint64 workspace_id = 3;
   RequestMetadata metadata = 4;
 }
 
-message addShelfResponse {
+message AddShelfResponse {
   uint64 shelf_id = 1;
   ResponseMetadata metadata = 2;
 }
 
-message getShelves {
+message GetShelves {
   uint64 workspace_id = 1;
   RequestMetadata metadata = 2;
 }
@@ -144,7 +149,7 @@ message CreateTag {
 }
 
 message CreateTagResponse {
-  uint64 tag_id = 1;
+  optional uint64 tag_id = 1;
   ResponseMetadata metadata = 2;
 }
 

@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
+use std::vec;
 
 #[derive(Debug, Eq, PartialOrd, PartialEq, Ord, Hash, Default)]
 pub struct Tag {
@@ -62,14 +63,67 @@ impl Eq for TagRef {}
 
 //[#] We require a tag manmager
 pub struct TagManager {
-    tags: HashMap<String, TagRef>,
+    tags: HashMap<(u64, u64), TagRef>,    // (Tag_ID, Workspace_ID) -> TagRef
 }
 
-impl TagManager {
-    pub fn retrieve_tag(name: &str) -> Option<TagRef> {
+impl TagManager { 
+
+    pub fn new() -> Self {
+        TagManager {
+            tags: HashMap::new(),
+        }
+    }
+
+    pub fn validate(&self, tag_set: HashSet<u64>, workspace_id: u64) -> Result<(), TagErr> {
+        let mut missing : Vec<u64> = vec![];
+        for tag in tag_set {
+            if !self.tags.contains_key(&(tag.clone(), workspace_id)) {
+                missing.push(tag.clone());
+            }
+        }
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(TagErr::TagMissing(missing))
+        } 
+    }
+
+    pub fn create_tag(&mut self, name: &str, workspace_id: u64, priority: u64, parent: Option<u64>) -> Result<u64, TagErr> {
+
+        if parent.is_some() && !self.tags.contains_key(&(parent.unwrap().clone(), workspace_id.clone())) {
+            return Err(TagErr::ParentMissing(parent.unwrap()));
+        }
+
+        loop {
+            let id = rand::random::<u64>();
+            if !self.tags.contains_key(&(id.clone(), workspace_id.clone())){
+                let parent = match parent {
+                    Some(p) => Some(self.tags.get(&(p.clone(), workspace_id.clone())).unwrap().clone()),
+                    None => None,
+                };
+                let tag = Tag {
+                    id,
+                    priority,
+                    name: name.to_string(),
+                    parent: parent,
+                };
+                self.tags.insert((id.clone(), workspace_id.clone()), TagRef {
+                    tag_ref: Arc::new(RwLock::new(tag)),
+                });
+                return Ok(id);
+            }
+        }
+    }
+
+    pub fn retrieve_tag(workspace_id: u64, name: &str) -> Result<TagRef, TagErr> {
         println!("Retrieving tag {}", name);
-        return Some(TagRef {
+        return Ok(TagRef {
             tag_ref: Arc::new(RwLock::new(Tag::default())),
         });
     }
 }
+
+pub enum TagErr {
+    TagMissing(Vec<u64>), 
+    ParentMissing(u64)
+}   
