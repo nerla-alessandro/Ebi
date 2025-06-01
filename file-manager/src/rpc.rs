@@ -62,16 +62,10 @@ pub enum NotificationCode {
 pub enum SyncCode {
     Sync = 1,
 }
-impl_try_from!(MessageType,
-    Request,
-    Response,
-    Data,
-    Notification,
-    Sync
-);
+impl_try_from!(MessageType, Request, Response, Data, Notification, Sync);
 
-
-impl_try_from!(RequestCode,
+impl_try_from!(
+    RequestCode,
     ClientQuery,
     PeerQuery,
     CreateTag,
@@ -90,32 +84,14 @@ impl_try_from!(RequestCode,
     StripTag
 );
 
-impl_try_from!(DataCode,
-    ClientQueryData,
-    PeerQueryData
-);
+impl_try_from!(DataCode, ClientQueryData, PeerQueryData);
 
-impl_try_from!(NotificationCode,
-    Heartbeat,
-    Operation,
-    PeerConnected
-);
+impl_try_from!(NotificationCode, Heartbeat, Operation, PeerConnected);
 
-impl_try_from!(ActionTarget,
-    Workspace,
-    Shelf,
-    Tag
-);
+impl_try_from!(ActionTarget, Workspace, Shelf, Tag);
 
-impl_try_from!(ActionType,
-    Create,
-    Edit,
-    Delete
-);
+impl_try_from!(ActionType, Create, Edit, Delete);
 
-impl_try_from!(SyncCode,
-    Sync
-);
-
+impl_try_from!(SyncCode, Sync);
 
 tonic::include_proto!("ebi.rpc");

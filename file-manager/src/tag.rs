@@ -111,9 +111,9 @@ impl TagManager {
         let parent = match parent {
             Some(p) => Some(
                 self.tags
-                .get(&(p.clone(), workspace_id.clone()))
-                .unwrap()
-                .clone(),
+                    .get(&(p.clone(), workspace_id.clone()))
+                    .unwrap()
+                    .clone(),
             ),
             None => None,
         };
@@ -141,7 +141,6 @@ impl TagManager {
         }
         tags
     }
-
 }
 
 pub enum TagErr {
