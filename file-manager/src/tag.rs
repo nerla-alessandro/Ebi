@@ -102,33 +102,34 @@ impl TagManager {
             return Err(TagErr::ParentMissing(parent.unwrap()));
         }
 
-        loop {
+        let id = loop {
             let id = rand::random::<u64>();
             if !self.tags.contains_key(&(id.clone(), workspace_id.clone())) {
-                let parent = match parent {
-                    Some(p) => Some(
-                        self.tags
-                            .get(&(p.clone(), workspace_id.clone()))
-                            .unwrap()
-                            .clone(),
-                    ),
-                    None => None,
-                };
-                let tag = Tag {
-                    id,
-                    priority,
-                    name: name.to_string(),
-                    parent: parent,
-                };
-                self.tags.insert(
-                    (id.clone(), workspace_id.clone()),
-                    TagRef {
-                        tag_ref: Arc::new(RwLock::new(tag)),
-                    },
-                );
-                return Ok(id);
+                break id;
             }
-        }
+        };
+        let parent = match parent {
+            Some(p) => Some(
+                self.tags
+                .get(&(p.clone(), workspace_id.clone()))
+                .unwrap()
+                .clone(),
+            ),
+            None => None,
+        };
+        let tag = Tag {
+            id,
+            priority,
+            name: name.to_string(),
+            parent,
+        };
+        self.tags.insert(
+            (id.clone(), workspace_id.clone()),
+            TagRef {
+                tag_ref: Arc::new(RwLock::new(tag)),
+            },
+        );
+        Ok(id)
     }
 
     pub fn get_tags(&mut self, workspace_id: u64) -> Vec<TagRef> {

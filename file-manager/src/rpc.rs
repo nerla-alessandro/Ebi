@@ -1,4 +1,20 @@
 use std::convert::TryFrom;
+macro_rules! impl_try_from {
+    ($enum_name:ident, $( $variant:ident ),* $(,)?) => {
+        impl TryFrom<u8> for $enum_name {
+            type Error = ();
+
+            fn try_from(v: u8) -> Result<Self, Self::Error> {
+                match v {
+                    $(
+                        x if x == $enum_name::$variant as u8 => Ok($enum_name::$variant),
+                    )*
+                    _ => Err(()),
+                }
+            }
+        }
+    };
+}
 
 #[derive(Debug)]
 pub enum MessageType {
@@ -46,108 +62,60 @@ pub enum NotificationCode {
 pub enum SyncCode {
     Sync = 1,
 }
+impl_try_from!(MessageType,
+    Request,
+    Response,
+    Data,
+    Notification,
+    Sync
+);
 
-impl TryFrom<u8> for MessageType {
-    type Error = ();
 
-    fn try_from(v: u8) -> Result<Self, Self::Error> {
-        match v {
-            x if x == MessageType::Request as u8 => Ok(MessageType::Request),
-            x if x == MessageType::Response as u8 => Ok(MessageType::Response),
-            x if x == MessageType::Data as u8 => Ok(MessageType::Data),
-            x if x == MessageType::Notification as u8 => Ok(MessageType::Notification),
-            x if x == MessageType::Sync as u8 => Ok(MessageType::Sync),
-            _ => Err(()),
-        }
-    }
-}
+impl_try_from!(RequestCode,
+    ClientQuery,
+    PeerQuery,
+    CreateTag,
+    EditWorkspace,
+    DeleteWorkspace,
+    GetWorkspaces,
+    AddShelf,
+    EditShelf,
+    RemoveShelf,
+    GetShelves,
+    CreateTag,
+    EditTag,
+    DeleteTag,
+    AttachTag,
+    DetachTag,
+    StripTag
+);
 
-impl TryFrom<u8> for RequestCode {
-    type Error = ();
+impl_try_from!(DataCode,
+    ClientQueryData,
+    PeerQueryData
+);
 
-    fn try_from(v: u8) -> Result<Self, Self::Error> {
-        match v {
-            x if x == RequestCode::ClientQuery as u8 => Ok(RequestCode::ClientQuery),
-            x if x == RequestCode::PeerQuery as u8 => Ok(RequestCode::PeerQuery),
-            x if x == RequestCode::CreateWorkspace as u8 => Ok(RequestCode::CreateWorkspace),
-            x if x == RequestCode::EditWorkspace as u8 => Ok(RequestCode::EditWorkspace),
-            x if x == RequestCode::DeleteWorkspace as u8 => Ok(RequestCode::DeleteWorkspace),
-            x if x == RequestCode::GetWorkspaces as u8 => Ok(RequestCode::GetWorkspaces),
-            x if x == RequestCode::AddShelf as u8 => Ok(RequestCode::AddShelf),
-            x if x == RequestCode::EditShelf as u8 => Ok(RequestCode::EditShelf),
-            x if x == RequestCode::RemoveShelf as u8 => Ok(RequestCode::RemoveShelf),
-            x if x == RequestCode::GetShelves as u8 => Ok(RequestCode::GetShelves),
-            x if x == RequestCode::CreateTag as u8 => Ok(RequestCode::CreateTag),
-            x if x == RequestCode::EditTag as u8 => Ok(RequestCode::EditTag),
-            x if x == RequestCode::DeleteTag as u8 => Ok(RequestCode::DeleteTag),
-            x if x == RequestCode::AttachTag as u8 => Ok(RequestCode::AttachTag),
-            x if x == RequestCode::DetachTag as u8 => Ok(RequestCode::DetachTag),
-            x if x == RequestCode::StripTag as u8 => Ok(RequestCode::StripTag),
-            _ => Err(()),
-        }
-    }
-}
+impl_try_from!(NotificationCode,
+    Heartbeat,
+    Operation,
+    PeerConnected
+);
 
-impl TryFrom<u8> for DataCode {
-    type Error = ();
+impl_try_from!(ActionTarget,
+    Workspace,
+    Shelf,
+    Tag
+);
 
-    fn try_from(v: u8) -> Result<Self, Self::Error> {
-        match v {
-            x if x == DataCode::ClientQueryData as u8 => Ok(DataCode::ClientQueryData),
-            x if x == DataCode::PeerQueryData as u8 => Ok(DataCode::PeerQueryData),
-            _ => Err(()),
-        }
-    }
-}
+impl_try_from!(ActionType,
+    Create,
+    Edit,
+    Delete
+);
 
-impl TryFrom<u8> for NotificationCode {
-    type Error = ();
+impl_try_from!(SyncCode,
+    Sync
+);
 
-    fn try_from(v: u8) -> Result<Self, Self::Error> {
-        match v {
-            x if x == NotificationCode::Heartbeat as u8 => Ok(NotificationCode::Heartbeat),
-            x if x == NotificationCode::Operation as u8 => Ok(NotificationCode::Operation),
-            x if x == NotificationCode::PeerConnected as u8 => Ok(NotificationCode::PeerConnected),
-            _ => Err(()),
-        }
-    }
-}
-
-impl TryFrom<u32> for ActionTarget {
-    type Error = ();
-
-    fn try_from(v: u32) -> Result<Self, Self::Error> {
-        match v {
-            x if x == ActionTarget::Workspace as u32 => Ok(ActionTarget::Workspace),
-            x if x == ActionTarget::Shelf as u32 => Ok(ActionTarget::Shelf),
-            x if x == ActionTarget::Tag as u32 => Ok(ActionTarget::Tag),
-            _ => Err(()),
-        }
-    }
-}
-
-impl TryFrom<u8> for ActionType {
-    type Error = ();
-
-    fn try_from(v: u8) -> Result<Self, Self::Error> {
-        match v {
-            x if x == ActionType::Create as u8 => Ok(ActionType::Create),
-            x if x == ActionType::Edit as u8 => Ok(ActionType::Edit),
-            x if x == ActionType::Delete as u8 => Ok(ActionType::Delete),
-            _ => Err(()),
-        }
-    }
-}
-
-impl TryFrom<u8> for SyncCode {
-    type Error = ();
-
-    fn try_from(v: u8) -> Result<Self, Self::Error> {
-        match v {
-            x if x == SyncCode::Sync as u8 => Ok(SyncCode::Sync),
-            _ => Err(()),
-        }
-    }
-}
 
 tonic::include_proto!("ebi.rpc");

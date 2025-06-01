@@ -69,16 +69,17 @@ impl ShelfManager {
             return Ok(self.paths[&path]);
         }
 
-        loop {
+        let id = loop {
             let id = rand::random::<u64>();
             if !self.shelves.contains_key(&id) {
-                let shelf = Shelf::new(path.clone())?;
-                self.shelves.insert(id, Arc::new(RwLock::new(shelf)));
-                self.count.insert(id, 1);
-                self.paths.insert(path.clone(), id);
-                return Ok(id);
+                break id;
             }
-        }
+        };
+        let shelf = Shelf::new(path.clone())?;
+        self.shelves.insert(id, Arc::new(RwLock::new(shelf)));
+        self.count.insert(id, 1);
+        self.paths.insert(path.clone(), id);
+        return Ok(id);
     }
 
     pub async fn try_remove_shelf(&mut self, id: u64) -> bool {
