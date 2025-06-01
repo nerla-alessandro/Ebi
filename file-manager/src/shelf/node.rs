@@ -3,8 +3,7 @@ use crate::tag::TagRef;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io;
 use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Default)]
 pub struct Node {
@@ -28,7 +27,7 @@ impl Node {
                 (
                     file_path.clone(),
                     FileRef {
-                        file_ref: Rc::new(RwLock::new(File::new(
+                        file_ref: Arc::new(RwLock::new(File::new(
                             file_path.clone(),
                             BTreeSet::new(),
                             BTreeSet::new(),

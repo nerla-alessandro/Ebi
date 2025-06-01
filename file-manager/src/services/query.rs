@@ -1,22 +1,26 @@
-use tower::{Service};
-use std::{sync::Arc, future::Future, pin::Pin, task::{Context, Poll}};
-use crate::query::{Query, FileOrder, RetrieveService, QueryErr, OrderedFileID, RetrieveErr};
+use crate::query::{FileOrder, OrderedFileID, Query, QueryErr, RetrieveErr, RetrieveService};
 use crate::services::cache::CacheService;
 use crate::services::peer::PeerService;
-use std::collections::BTreeSet;
-use crate::workspace::WorkspaceId;
 use crate::tag::TagRef;
+use crate::workspace::WorkspaceId;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 use tokio::task::JoinHandle;
+use tower::Service;
 
 type TaskID = u64;
 
 #[derive(Clone)]
-struct QueryService
-{
+struct QueryService {
     retrieve_serv: Retrieve,
     peer: PeerService,
-    tasks: Arc<HashMap<TaskID, JoinHandle<()>>>
+    tasks: Arc<HashMap<TaskID, JoinHandle<()>>>,
 }
 
 #[derive(Clone)]
@@ -25,7 +29,10 @@ struct Retrieve {
 }
 
 impl RetrieveService for Retrieve {
-    async fn get_files<T: FileOrder>(&self, uuid: (u64, u64)) -> Result<BTreeSet<OrderedFileID<T>>, RetrieveErr> {
+    async fn get_files<T: FileOrder>(
+        &self,
+        uuid: (u64, u64),
+    ) -> Result<BTreeSet<OrderedFileID<T>>, RetrieveErr> {
         todo!();
     }
 
@@ -34,20 +41,19 @@ impl RetrieveService for Retrieve {
     }
 }
 
-
 struct Request<'a, FileOrd: FileOrder> {
     query: String,
     ord: &'a FileOrd,
     workspace_id: WorkspaceId,
     partial: bool,
-    client_id: u64
+    client_id: u64,
 }
 
-
-impl<'b, FileOrd: Clone + FileOrder + Send> Service<Request<'b, FileOrd>> for QueryService 
-where  OrderedFileID<FileOrd>: Ord, &'b FileOrd: Send
+impl<'b, FileOrd: Clone + FileOrder + Send> Service<Request<'b, FileOrd>> for QueryService
+where
+    OrderedFileID<FileOrd>: Ord,
+    &'b FileOrd: Send,
 {
-
     type Response = ();
     type Error = ();
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'b>>;
@@ -68,8 +74,9 @@ where  OrderedFileID<FileOrd>: Ord, &'b FileOrd: Send
             let join_handle: JoinHandle<()> = tokio::spawn(async move {
                 //query.evaluate(self.retrieve_serv);
                 //peer_service.call();
-            }); 
-            Ok(()) })
+            });
+            Ok(())
+        })
     }
 }
 
@@ -83,9 +90,7 @@ impl<FileOrd: Clone + FileOrder> Service<(Query<FileOrd>, WorkspaceId)> for Quer
     }
 
     fn call(&mut self, req: (Query<FileOrd>, WorkspaceId)) -> Self::Future {
-
-        Box::pin(async move {
-        });
+        Box::pin(async move {});
         todo!()
     }
 }

@@ -1,18 +1,24 @@
-use tower::{Service};
-use std::{sync::Arc, sync::RwLock, future::Future, pin::Pin, task::{Context, Poll}};
+use crate::query::{FileOrder, OrderedFileID};
 use crate::services::peer::PeerService;
-use crate::workspace::{Workspace, WorkspaceId};
-use crate::tag::TagRef;
-use std::path::PathBuf;
-use std::collections::{BTreeSet, HashMap};
-use crate::query::{OrderedFileID, FileOrder};
 use crate::tag::TagManager;
+use crate::tag::TagRef;
+use crate::workspace::{Workspace, WorkspaceId};
+use std::collections::{BTreeSet, HashMap};
+use std::path::PathBuf;
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+    sync::RwLock,
+    task::{Context, Poll},
+};
+use tower::Service;
 
 #[derive(Clone)]
 pub struct CacheService {
     peer_service: PeerService,
     tag_manager: Arc<RwLock<TagManager>>,
-    workspaces: Arc<RwLock<HashMap<WorkspaceId, Workspace>>>
+    workspaces: Arc<RwLock<HashMap<WorkspaceId, Workspace>>>,
 }
 
 enum RetrieveFiles<T: FileOrder + Clone> {
@@ -29,15 +35,15 @@ enum RetrieveData {
 }
 enum RetrieveInfo {
     GetFileInfo(PathBuf),
-    GetDirInfo(PathBuf)
+    GetDirInfo(PathBuf),
 }
 
 struct HashCache {
-    hash: u64
+    hash: u64,
 }
 
 enum CommandRes<T: FileOrder + Clone> {
-    OrderedFiles(BTreeSet<OrderedFileID<T>>)
+    OrderedFiles(BTreeSet<OrderedFileID<T>>),
 }
 
 enum CacheError {
@@ -45,7 +51,6 @@ enum CacheError {
 }
 
 impl<T: FileOrder + Clone> Service<RetrieveFiles<T>> for CacheService {
-
     type Response = BTreeSet<OrderedFileID<T>>;
     type Error = CacheError;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
@@ -64,8 +69,7 @@ impl<T: FileOrder + Clone> Service<RetrieveFiles<T>> for CacheService {
                         return CacheError::WorkspaceNotFound;
                     }
                 }
-                RetrieveFiles::GetTag(work_id, ord, tag) => {
-                }
+                RetrieveFiles::GetTag(work_id, ord, tag) => {}
             }
             todo!();
         });

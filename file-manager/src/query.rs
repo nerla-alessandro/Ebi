@@ -1,7 +1,7 @@
 use crate::shelf::file::{FileMetadata, FileRef};
-use crate::tag::{self, TagManager, TagRef, TagErr};
-use std::collections::{BTreeSet, HashSet};
+use crate::tag::{self, TagErr, TagManager, TagRef};
 use std::collections::HashMap;
+use std::collections::{BTreeSet, HashSet};
 use std::fmt::Binary;
 use std::path::PathBuf;
 use std::result;
@@ -91,13 +91,16 @@ enum Formula {
 impl Formula {
     fn get_tags(&self) -> HashSet<u64> {
         match self {
-            Formula::BinaryExpression(_, x, y) => x.get_tags().union(&y.get_tags()).cloned().collect::<HashSet<u64>>(),
+            Formula::BinaryExpression(_, x, y) => x
+                .get_tags()
+                .union(&y.get_tags())
+                .cloned()
+                .collect::<HashSet<u64>>(),
             Formula::UnaryExpression(_, x) => x.get_tags(),
             Formula::Proposition(p) => HashSet::from([p.tag_id.clone()]),
         }
     }
 }
-
 
 #[derive(Debug, Clone)]
 enum BinaryOp {
@@ -117,7 +120,7 @@ struct Proposition {
 
 #[derive(Debug, Clone)]
 struct PeerID {
-    id: String, //[!] Should be a UUID 
+    id: String, //[!] Should be a UUID
 }
 
 #[derive(Debug, Clone)]
@@ -300,7 +303,7 @@ impl FileID {
 pub struct Query<T: FileOrder + Clone> {
     formula: Formula,
     order: T,
-    result: Option<BTreeSet<OrderedFileID<T>>>
+    result: Option<BTreeSet<OrderedFileID<T>>>,
 }
 
 impl<T: FileOrder + Clone> Query<T> {
@@ -309,7 +312,7 @@ impl<T: FileOrder + Clone> Query<T> {
         let mut query = Query {
             formula,
             order,
-            result: None
+            result: None,
         };
         query.simplify();
         Ok(query)
@@ -319,67 +322,97 @@ impl<T: FileOrder + Clone> Query<T> {
         self.formula.get_tags()
     }
 
-    //[!] Should be executed inside the QueryService 
-    pub fn validate<R>(&mut self, workspace_id: u64, tag_manager: Arc<RwLock<TagManager>>) -> Result<(), TagErr> { 
+    //[!] Should be executed inside the QueryService
+    pub fn validate<R>(
+        &mut self,
+        workspace_id: u64,
+        tag_manager: Arc<RwLock<TagManager>>,
+    ) -> Result<(), TagErr> {
         let tag_set = self.formula.get_tags();
         tag_manager.read().unwrap().validate(tag_set, workspace_id)
     }
 
-    pub async fn evaluate<R>(&mut self, workspace_id: u64, ret_service: R) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr>
+    pub async fn evaluate<R>(
+        &mut self,
+        workspace_id: u64,
+        ret_service: R,
+    ) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr>
     where
         OrderedFileID<T>: Ord,
-        R: RetrieveService + Clone
+        R: RetrieveService + Clone,
     {
         Query::recursive_evaluate(self.formula.clone(), workspace_id, ret_service.clone()).await
     }
 
-    async fn recursive_evaluate<R>(formula: Formula, workspace_id: u64, ret_service: R) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr>
+    async fn recursive_evaluate<R>(
+        formula: Formula,
+        workspace_id: u64,
+        ret_service: R,
+    ) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr>
     where
         OrderedFileID<T>: Ord,
-        R: RetrieveService + Clone
+        R: RetrieveService + Clone,
     {
         match formula {
             Formula::BinaryExpression(BinaryOp::AND, x, y) => match (*x.clone(), *y.clone()) {
                 (_, Formula::UnaryExpression(UnaryOp::NOT, b)) => {
-                    let a = Query::recursive_evaluate(*x.clone(), workspace_id, ret_service.clone()).await?;
-                    let b = Query::recursive_evaluate(*b.clone(), workspace_id, ret_service.clone()).await?;
+                    let a =
+                        Query::recursive_evaluate(*x.clone(), workspace_id, ret_service.clone())
+                            .await?;
+                    let b =
+                        Query::recursive_evaluate(*b.clone(), workspace_id, ret_service.clone())
+                            .await?;
                     let x: BTreeSet<OrderedFileID<T>> = a.difference(&b).cloned().collect();
                     Ok(x)
                 }
                 (Formula::UnaryExpression(UnaryOp::NOT, a), _) => {
-                    let a = Query::recursive_evaluate(*a.clone(), workspace_id, ret_service.clone()).await?;
-                    let b = Query::recursive_evaluate(*y.clone(), workspace_id, ret_service.clone()).await?;
+                    let a =
+                        Query::recursive_evaluate(*a.clone(), workspace_id, ret_service.clone())
+                            .await?;
+                    let b =
+                        Query::recursive_evaluate(*y.clone(), workspace_id, ret_service.clone())
+                            .await?;
                     let x: BTreeSet<OrderedFileID<T>> = b.difference(&a).cloned().collect();
                     Ok(x)
                 }
                 (a, b) => {
-                    let a = Query::recursive_evaluate(a.clone(), workspace_id, ret_service.clone()).await?;
-                    let b = Query::recursive_evaluate(b.clone(), workspace_id, ret_service.clone()).await?;
+                    let a = Query::recursive_evaluate(a.clone(), workspace_id, ret_service.clone())
+                        .await?;
+                    let b = Query::recursive_evaluate(b.clone(), workspace_id, ret_service.clone())
+                        .await?;
                     let x: BTreeSet<OrderedFileID<T>> = a.intersection(&b).cloned().collect();
                     Ok(x)
                 }
             },
             Formula::BinaryExpression(BinaryOp::OR, x, y) => {
-                let a = Query::recursive_evaluate(*x.clone(), workspace_id, ret_service.clone()).await?;
-                let b = Query::recursive_evaluate(*y.clone(), workspace_id, ret_service.clone()).await?;
+                let a = Query::recursive_evaluate(*x.clone(), workspace_id, ret_service.clone())
+                    .await?;
+                let b = Query::recursive_evaluate(*y.clone(), workspace_id, ret_service.clone())
+                    .await?;
                 let x: BTreeSet<OrderedFileID<T>> = a.union(&b).cloned().collect();
                 Ok(x)
             }
             Formula::BinaryExpression(BinaryOp::XOR, x, y) => {
-                let a = Query::recursive_evaluate(*x.clone(), workspace_id, ret_service.clone()).await?;
-                let b = Query::recursive_evaluate(*y.clone(), workspace_id, ret_service.clone()).await?;
+                let a = Query::recursive_evaluate(*x.clone(), workspace_id, ret_service.clone())
+                    .await?;
+                let b = Query::recursive_evaluate(*y.clone(), workspace_id, ret_service.clone())
+                    .await?;
                 let x: BTreeSet<OrderedFileID<T>> = a.symmetric_difference(&b).cloned().collect();
                 Ok(x)
             }
             Formula::UnaryExpression(UnaryOp::NOT, x) => {
-                let a = ret_service.get_all().await.map_err(|err| QueryErr::RuntimeError(err))?;
+                let a = ret_service
+                    .get_all()
+                    .await
+                    .map_err(|err| QueryErr::RuntimeError(err))?;
                 let b = Query::recursive_evaluate(*x.clone(), workspace_id, ret_service).await?;
                 let x: BTreeSet<OrderedFileID<T>> = a.difference(&b).cloned().collect();
                 Ok(x)
             }
-            Formula::Proposition(p) => {
-                ret_service.get_files((p.tag_id, workspace_id)).await.map_err(|err| QueryErr::RuntimeError(err))
-            }
+            Formula::Proposition(p) => ret_service
+                .get_files((p.tag_id, workspace_id))
+                .await
+                .map_err(|err| QueryErr::RuntimeError(err)),
         }
     }
 
@@ -396,7 +429,7 @@ impl<T: FileOrder + Clone> Query<T> {
 
 impl Formula {
     fn recursive_simplify(formula: Formula) -> (Formula, bool) {
-        //[/] Further simplification is possible but NP-Hard 
+        //[/] Further simplification is possible but NP-Hard
         match formula {
             Formula::Proposition(_) => {
                 return (formula, false);
@@ -537,22 +570,23 @@ impl Formula {
 
 // TODO: define appropriate errors, include I/O, etc.
 pub enum QueryErr {
-    SyntaxError,        // The Query is incorrectly formatted
-    ParseError,         // A Tag_ID is not a valid u64
-    KeyError(TagErr),   // The Query uses tags which do not existq 
+    SyntaxError,               // The Query is incorrectly formatted
+    ParseError,                // A Tag_ID is not a valid u64
+    KeyError(TagErr),          // The Query uses tags which do not exist
     RuntimeError(RetrieveErr), // The Query could not be executed
 }
 
 //[!] Wrapper for a cacheservice.call() ?
 
 pub enum RetrieveErr {
-
-    CacheError
+    CacheError,
 }
 
 pub trait RetrieveService {
-
-    async fn get_files<T: FileOrder>(&self, uuid: (u64, u64)) -> Result<BTreeSet<OrderedFileID<T>>, RetrieveErr> {
+    async fn get_files<T: FileOrder>(
+        &self,
+        uuid: (u64, u64),
+    ) -> Result<BTreeSet<OrderedFileID<T>>, RetrieveErr> {
         todo!();
     }
 
