@@ -142,12 +142,6 @@ impl TagManager {
         tags
     }
 
-    pub fn retrieve_tag(workspace_id: u64, name: &str) -> Result<TagRef, TagErr> {
-        println!("Retrieving tag {}", name);
-        return Ok(TagRef {
-            tag_ref: Arc::new(RwLock::new(Tag::default())),
-        });
-    }
 }
 
 pub enum TagErr {
