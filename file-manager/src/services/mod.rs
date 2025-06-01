@@ -1,4 +1,4 @@
-pub mod query;
-pub mod peer;
 pub mod cache;
+pub mod peer;
+pub mod query;
 pub mod rpc;

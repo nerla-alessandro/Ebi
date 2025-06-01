@@ -7,12 +7,11 @@ use std::os::unix::fs::MetadataExt;
 #[cfg(windows)]
 use std::os::windows::fs::MetadataExt;
 use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone)]
 pub struct FileRef {
-    pub file_ref: Rc<RwLock<File>>,
+    pub file_ref: Arc<RwLock<File>>,
 }
 
 #[derive(Debug)]

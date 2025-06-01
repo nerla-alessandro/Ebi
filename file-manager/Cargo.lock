@@ -732,6 +732,7 @@ dependencies = [
  "peg",
  "prost",
  "rand 0.8.5",
+ "regex",
  "tokio",
  "tonic",
  "tonic-build",

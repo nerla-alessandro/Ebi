@@ -6,10 +6,10 @@ use std::vec;
 
 #[derive(Debug, Eq, PartialOrd, PartialEq, Ord, Hash, Default)]
 pub struct Tag {
-    id: u64,
-    priority: u64,
-    name: String,
-    parent: Option<TagRef>,
+    pub id: u64,
+    pub priority: u64,
+    pub name: String,
+    pub parent: Option<TagRef>,
 }
 
 #[derive(Debug)]
@@ -63,11 +63,10 @@ impl Eq for TagRef {}
 
 //[#] We require a tag manmager
 pub struct TagManager {
-    tags: HashMap<(u64, u64), TagRef>,    // (Tag_ID, Workspace_ID) -> TagRef
+    pub tags: HashMap<(u64, u64), TagRef>, // (Tag_ID, Workspace_ID) -> TagRef - [Global Tags have Workspace_ID = 0]
 }
 
-impl TagManager { 
-
+impl TagManager {
     pub fn new() -> Self {
         TagManager {
             tags: HashMap::new(),
@@ -75,7 +74,7 @@ impl TagManager {
     }
 
     pub fn validate(&self, tag_set: HashSet<u64>, workspace_id: u64) -> Result<(), TagErr> {
-        let mut missing : Vec<u64> = vec![];
+        let mut missing: Vec<u64> = vec![];
         for tag in tag_set {
             if !self.tags.contains_key(&(tag.clone(), workspace_id)) {
                 missing.push(tag.clone());
@@ -85,20 +84,34 @@ impl TagManager {
             Ok(())
         } else {
             Err(TagErr::TagMissing(missing))
-        } 
+        }
     }
 
-    pub fn create_tag(&mut self, name: &str, workspace_id: u64, priority: u64, parent: Option<u64>) -> Result<u64, TagErr> {
-
-        if parent.is_some() && !self.tags.contains_key(&(parent.unwrap().clone(), workspace_id.clone())) {
+    pub fn create_tag(
+        &mut self,
+        name: &str,
+        workspace_id: u64,
+        priority: u64,
+        parent: Option<u64>,
+    ) -> Result<u64, TagErr> {
+        if parent.is_some()
+            && !self
+                .tags
+                .contains_key(&(parent.unwrap().clone(), workspace_id.clone()))
+        {
             return Err(TagErr::ParentMissing(parent.unwrap()));
         }
 
         loop {
             let id = rand::random::<u64>();
-            if !self.tags.contains_key(&(id.clone(), workspace_id.clone())){
+            if !self.tags.contains_key(&(id.clone(), workspace_id.clone())) {
                 let parent = match parent {
-                    Some(p) => Some(self.tags.get(&(p.clone(), workspace_id.clone())).unwrap().clone()),
+                    Some(p) => Some(
+                        self.tags
+                            .get(&(p.clone(), workspace_id.clone()))
+                            .unwrap()
+                            .clone(),
+                    ),
                     None => None,
                 };
                 let tag = Tag {
@@ -107,12 +120,25 @@ impl TagManager {
                     name: name.to_string(),
                     parent: parent,
                 };
-                self.tags.insert((id.clone(), workspace_id.clone()), TagRef {
-                    tag_ref: Arc::new(RwLock::new(tag)),
-                });
+                self.tags.insert(
+                    (id.clone(), workspace_id.clone()),
+                    TagRef {
+                        tag_ref: Arc::new(RwLock::new(tag)),
+                    },
+                );
                 return Ok(id);
             }
         }
+    }
+
+    pub fn get_tags(&mut self, workspace_id: u64) -> Vec<TagRef> {
+        let mut tags: Vec<TagRef> = vec![];
+        for (key, tag) in self.tags.iter() {
+            if key.1 == workspace_id {
+                tags.push(tag.clone());
+            }
+        }
+        tags
     }
 
     pub fn retrieve_tag(workspace_id: u64, name: &str) -> Result<TagRef, TagErr> {
@@ -124,6 +150,6 @@ impl TagManager {
 }
 
 pub enum TagErr {
-    TagMissing(Vec<u64>), 
-    ParentMissing(u64)
-}   
+    TagMissing(Vec<u64>),
+    ParentMissing(u64),
+}

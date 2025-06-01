@@ -1,33 +1,41 @@
 #![allow(dead_code)]
-use shelf::shelf::Shelf;
-use std::sync::Arc;
-use iroh::{SecretKey, Endpoint,
-    endpoint::Connection,
-    NodeId,
+use crate::rpc::{
+    AddShelf, AddShelfResponse, AttachTag, AttachTagResponse, ClientQuery, ClientQueryData,
+    CreateTag, CreateTagResponse, CreateWorkspace, CreateWorkspaceResponse, DeleteTag,
+    DeleteTagResponse, DeleteWorkspace, DeleteWorkspaceResponse, DetachTag, DetachTagResponse,
+    EditShelf, EditShelfResponse, EditTag, EditTagResponse, EditWorkspace, EditWorkspaceResponse,
+    GetShelves, GetShelvesResponse, GetWorkspaces, GetWorkspacesResponse, PeerQuery, PeerQueryData,
+    QueryResponse, RemoveShelf, RemoveShelfResponse, RequestCode,
 };
-use tokio::net::{TcpListener, TcpStream};
-use tokio::task::JoinHandle;
+use crate::services::peer::{Client, PeerService};
+use crate::services::rpc::{DaemonInfo, RpcService, TaskID};
 use anyhow::Result;
-use tokio::sync::{RwLock, Mutex};
-use tower::{Service, ServiceBuilder};
-use std::net::SocketAddr;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, AsyncBufReadExt, AsyncRead};
-use std::collections::HashMap;
-use crate::services::peer::{PeerService, Client};
-use crate::services::rpc::{RpcService, TaskID};
-use crate::rpc::{QueryRequest, RequestCode, EchoData};
+use iroh::RelayMode;
+use iroh::{endpoint::Connection, Endpoint, NodeId, SecretKey};
 use prost::Message;
-
+use rpc::MessageType;
+use shelf::shelf::{Shelf, ShelfManager};
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::hash::Hash;
+use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Instant;
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{Mutex, RwLock};
+use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
+use tower::{Service, ServiceBuilder};
 
 mod query;
+mod rpc;
+mod services;
 mod shelf;
 mod tag;
-mod services;
 mod workspace;
-mod rpc;
 
+const HEADER_SIZE: usize = 10;
 const ALPN: &[u8] = b"ebi";
 
 #[tokio::main]
@@ -39,13 +47,34 @@ async fn main() -> Result<()> {
         .secret_key(sec_key)
         .alpns(vec![ALPN.to_vec()])
         .bind()
-        .await?;
+        .await?; //[!] Error if PK is already in use
     println!("{:?}", ep.node_addr().await?.node_id.as_bytes());
     println!("{:?}", ep.node_addr().await?.node_id);
     let peers = Arc::new(RwLock::new(HashMap::<NodeId, Connection>::new()));
     let clients = Arc::new(RwLock::new(Vec::<Client>::new()));
     let tasks = Arc::new(HashMap::<TaskID, JoinHandle<()>>::new());
-    let service = ServiceBuilder::new().service(RpcService {  peer_service: PeerService { peers: peers.clone(), clients: clients.clone() }, tasks: tasks.clone() } );
+    let tag_manager = Arc::new(RwLock::new(tag::TagManager::new()));
+    let shelf_manager = Arc::new(RwLock::new(ShelfManager::new()));
+    let workspaces = Arc::new(RwLock::new(HashMap::<
+        workspace::WorkspaceId,
+        workspace::Workspace,
+    >::new()));
+    let relay_responses = Arc::new(RwLock::new(HashMap::new()));
+    let notify_queue = Arc::new(RwLock::new(VecDeque::new()));
+    let id: NodeId = ep.node_id();
+    let service = ServiceBuilder::new().service(RpcService {
+        daemon_info: Arc::new(DaemonInfo::new(id, "".to_string())),
+        peer_service: PeerService {
+            peers: peers.clone(),
+            clients: clients.clone(),
+        },
+        relay_responses: relay_responses.clone(),
+        notify_queue: notify_queue.clone(),
+        tasks: tasks.clone(),
+        tag_manager: tag_manager.clone(),
+        shelf_manager: shelf_manager.clone(),
+        workspaces: workspaces.clone(),
+    });
     loop {
         tokio::select! {
             Ok((stream, addr)) = listener.accept() => {
@@ -71,62 +100,349 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn handle_client(mut socket: Arc<Mutex<TcpStream>>, addr: SocketAddr, mut service: RpcService) {
-    let mut header = vec![0; 9];
+async fn handle_client(
+    mut socket: Arc<Mutex<TcpStream>>,
+    addr: SocketAddr,
+    mut service: RpcService,
+) {
+    let mut header = vec![0; HEADER_SIZE];
     let mut socket = socket.lock().await;
 
     loop {
         let bytes_read = match socket.read_exact(&mut header).await {
-            Ok(n) if n == 0 => {println!("{}", n); break},
+            Ok(n) if n == 0 => {
+                println!("{}", n);
+                break;
+            }
             Ok(n) => n,
-            Err(e) => {println!("{:?}", e); 9},
+            Err(e) => {
+                println!("{:?}", e);
+                9
+            }
         };
-
-        let req_type: u8 = u8::from_le_bytes([header[0]]);
-        println!("req_type: {}", req_type);
-        let size: u64 = u64::from_le_bytes(header[1..9].try_into().unwrap());
+        let msg_type: u8 = u8::from_le_bytes([header[0]]);
+        let msg_code: u8 = u8::from_le_bytes([header[1]]);
+        println!("Message Type: {}", msg_type);
+        println!("Message Code: {}", msg_code);
+        let size: u64 = u64::from_le_bytes(header[2..HEADER_SIZE].try_into().unwrap());
         println!("size: {}", size);
         let mut buffer = vec![0u8; size as usize];
         let bytes_read = match socket.read_exact(&mut buffer).await {
             Ok(n) if n == 0 => 0,
             Ok(n) => n,
-            Err(e) => {println!("{:?}", e); 0},
+            Err(e) => {
+                println!("{:?}", e);
+                0
+            }
         };
         println!("read all");
-        let req_res = match req_type.try_into() {
-            Ok(RequestCode::Query) => {
-                let req = QueryRequest::decode(&*buffer).unwrap();
-                if let Ok(response) = service.call(req).await {
-                    let mut buf = Vec::new();
-                    response.encode(&mut buf).unwrap();
-                    let _ = socket.write_all(&buf).await;
-                }
-                Ok(())
-            }
-            Ok(RequestCode::Echo) => {
 
-                let start = Instant::now();
-                let req = EchoData::decode(&*buffer).unwrap();
-                let elapsed = start.elapsed();
-                println!("Total execution time for both tasks: {:?}", elapsed);
-                if let Ok(response) = service.call(req).await {
-                    let mut buf = vec![1];
-                    buf[0] = 42;
-                    response.encode_to_vec();
-                    let _ = socket.write_all(&buf).await;
-                    let vec = &response.encode_to_vec();
-                    println!("vlen {}", vec.len());
-                    socket.write_all(&vec).await.unwrap();
+        match msg_type.try_into() {
+            Ok(MessageType::Request) => {
+                println!("Request message type received");
+                match msg_code.try_into() {
+                    Ok(RequestCode::CreateTag) => {
+                        let req = CreateTag::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::CreateTag as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(RequestCode::CreateWorkspace) => {
+                        let req = CreateWorkspace::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::CreateWorkspace as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(RequestCode::EditWorkspace) => {
+                        let req = EditWorkspace::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::EditWorkspace as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(RequestCode::GetWorkspaces) => {
+                        let req = GetWorkspaces::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::GetWorkspaces as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(RequestCode::GetShelves) => {
+                        let req = GetShelves::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::GetShelves as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(RequestCode::EditTag) => {
+                        let req = EditTag::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::EditTag as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(RequestCode::DeleteWorkspace) => {
+                        let req = DeleteWorkspace::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::DeleteWorkspace as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(RequestCode::AddShelf) => {
+                        let req = AddShelf::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::AddShelf as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(RequestCode::EditShelf) => {
+                        let req = EditShelf::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::EditShelf as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(RequestCode::RemoveShelf) => {
+                        let req = RemoveShelf::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::RemoveShelf as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(RequestCode::AttachTag) => {
+                        let req = AttachTag::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::AttachTag as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(RequestCode::DetachTag) => {
+                        let req = DetachTag::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::DetachTag as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(RequestCode::DeleteTag) => {
+                        let req = DeleteTag::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::DeleteTag as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(RequestCode::StripTag) => {
+                        let req = rpc::StripTag::decode(&*buffer).unwrap();
+                        if let Ok(response) = service.call(req).await {
+                            let mut payload = Vec::new();
+                            response.encode(&mut payload).unwrap();
+                            let mut response = vec![0; HEADER_SIZE];
+                            response[0] = MessageType::Response as u8;
+                            response[1] = RequestCode::StripTag as u8;
+                            let size = payload.len() as u64;
+                            response[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+                            response.extend_from_slice(&payload);
+                            let _ = socket.write_all(&response).await;
+                        }
+                    }
+                    Ok(_) => {
+                        todo!();
+                    }
+                    Err(_) => {
+                        println!("Unknown request code: {}", msg_code);
+                        break;
+                    }
                 }
-                Ok(())
+            }
+            Ok(MessageType::Response) => {
+                println!("Response message type received");
+                match msg_code.try_into() {
+                    Ok(RequestCode::CreateTag) => {
+                        let res = CreateTagResponse::decode(&*buffer).unwrap();
+                        println!("CreateTag Response received");
+                        println!("\tTag ID: {:?}", res.tag_id);
+                    }
+                    Ok(RequestCode::CreateWorkspace) => {
+                        let res = CreateWorkspaceResponse::decode(&*buffer).unwrap();
+                        println!("CreateWorkspace Response received");
+                        println!("\tWorkspace ID: {:?}", res.workspace_id);
+                    }
+                    Ok(RequestCode::EditWorkspace) => {
+                        let _ = EditWorkspaceResponse::decode(&*buffer).unwrap();
+                        println!("EditWorkspace Response received");
+                    }
+                    Ok(RequestCode::DeleteWorkspace) => {
+                        let _ = DeleteWorkspaceResponse::decode(&*buffer).unwrap();
+                        println!("DeleteWorkspace Response received");
+                    }
+                    Ok(RequestCode::GetWorkspaces) => {
+                        let res = GetWorkspacesResponse::decode(&*buffer).unwrap();
+                        println!("GetWorkspaces Response received");
+                        println!("\tWorkspaces:");
+                        for workspace in &res.workspaces {
+                            println!("\t({:?}): {:?}", workspace.workspace_id, workspace.name);
+                        }
+                    }
+                    Ok(RequestCode::GetShelves) => {
+                        let res = GetShelvesResponse::decode(&*buffer).unwrap();
+                        println!("GetShelves Response received");
+                        println!("\tShelves:");
+                        for shelf in &res.shelves {
+                            println!("\t({:?}): {:?}", shelf.shelf_id, shelf.name);
+                            println!("\t\t{:?}", shelf.path);
+                        }
+                    }
+                    Ok(RequestCode::EditTag) => {
+                        let _ = EditTagResponse::decode(&*buffer).unwrap();
+                        println!("EditTag Response received");
+                    }
+                    Ok(RequestCode::AddShelf) => {
+                        let res = AddShelfResponse::decode(&*buffer).unwrap();
+                        println!("AddShelf Response received");
+                        println!("\tShelf ID: {:?}", res.shelf_id);
+                    }
+                    Ok(RequestCode::RemoveShelf) => {
+                        let _ = RemoveShelfResponse::decode(&*buffer).unwrap();
+                        println!("RemoveShelf Response received");
+                    }
+                    Ok(RequestCode::AttachTag) => {
+                        let _ = AttachTagResponse::decode(&*buffer).unwrap();
+                        println!("AttachTag Response received");
+                    }
+                    Ok(RequestCode::DetachTag) => {
+                        let _ = DetachTagResponse::decode(&*buffer).unwrap();
+                        println!("DetachTag Response received");
+                    }
+                    Ok(RequestCode::DeleteTag) => {
+                        let _ = DeleteTagResponse::decode(&*buffer).unwrap();
+                        println!("DeleteTag Response received");
+                    }
+                    Ok(RequestCode::EditShelf) => {
+                        let _ = EditShelfResponse::decode(&*buffer).unwrap();
+                        println!("EditShelf Response received");
+                    }
+                    Ok(RequestCode::StripTag) => {
+                        let _ = rpc::StripTagResponse::decode(&*buffer).unwrap();
+                        println!("StripTag Response received");
+                    }
+                    Ok(_) => {
+                        todo!();
+                    }
+                    Err(_) => {
+                        println!("Unknown response code: {}", msg_code);
+                        break;
+                    }
+                }
+            }
+            Ok(MessageType::Data) => {
+                println!("Data message type received");
+                // Handle data messages here
+            }
+            Ok(MessageType::Notification) => {
+                println!("Notification message type received");
+                // Handle notification messages here
+            }
+            Ok(MessageType::Sync) => {
+                println!("Sync message type received");
+                // Handle sync messages here
             }
             Err(_) => {
-                println!("Unknown header {}", req_type);
-                Err(())
+                println!("Unknown message type: {}", msg_type);
+                break;
             }
-        };
-
-
+        }
     }
     println!("Client disconnected: {}", addr);
 }

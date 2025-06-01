@@ -1,8 +1,6 @@
 syntax = "proto3";
 package ebi.rpc;
 
-import "file.proto";
-
 message RequestMetadata {
   uint64 source_id = 1;
   uint64 request_id = 2;
@@ -18,179 +16,292 @@ message ErrorData {
   repeated string error_data = 1;
 }
 
-//[x] Query Protocol 
+//[#] Query Protocol 
 
-message ClientQueryRequest {
+message ClientQuery { //[ ] 
   string query = 1;
-  file.FileOrd file_ord = 2;
+  FileOrd file_ord = 2;
   uint64 workspace_id = 4;
   bool partial = 5;
   RequestMetadata metadata = 6;
 }
 
-message PeerQueryRequest {
+message PeerQuery { //[ ] 
   bytes query = 1;
   uint64 workspace_id = 3;
   RequestMetadata metadata = 4;
 }
 
-message QueryResponse {
+message QueryResponse { //[ ] 
   uint64 token = 1;
   uint32 packets = 2;
   ResponseMetadata metadata = 3;
 }
 
-message ClientQueryData {
+message ClientQueryData { //[ ] 
   uint64 token = 1;
   uint32 return_code = 2;
-  repeated file.File files = 3;
+  repeated File files = 3;
 }
 
-message PeerQueryData {
+message PeerQueryData { //[ ] 
   uint64 token = 1;
   uint32 return_code = 2;
   bytes files = 3;
 }
 
-//[x] Workspace Operations 
+//[#] Workspace Operations 
 
-message CreateWorkspace {
+message CreateWorkspace { //[x] 
   string name = 1;
   string description = 2;
   RequestMetadata metadata = 3;
-}
+} //[x] Notify 
 
-message EditWorkspace {
+message EditWorkspace { //[x] 
   uint64 workspace_id = 1;
   string name = 2;
   string description = 3;
   RequestMetadata metadata = 4;
-}
+} //[x] Notify 
 
-message EditWorkspaceResponse {
+message EditWorkspaceResponse { //[x] 
   ResponseMetadata metadata = 1;
 }
 
-message CreateWorkspaceResponse {
+message CreateWorkspaceResponse { //[x] 
   uint64 workspace_id = 1;
   ResponseMetadata metadata = 2;
 }
 
-message DeleteWorkspace {
+message DeleteWorkspace { //[x] 
   uint64 workspace_id = 1;
   RequestMetadata metadata = 4;
-}
+} //[x] Notify 
 
-message DeleteWorkspaceResponse {
+message DeleteWorkspaceResponse { //[x] 
   ResponseMetadata metadata = 1;
 }
 
-message GetWorkspaces {
+message GetWorkspaces { //[x] 
   RequestMetadata metadata = 1;
 }
 
-message WorkspaceList {
+message GetWorkspacesResponse { //[x] 
   repeated Workspace workspaces = 1;
+  ResponseMetadata metadata = 2;
 }
 
 message Workspace {
   uint64 workspace_id = 1;
   string name = 2;
   string description = 3;
+  repeated Tag tags = 4;
 }
 
-//[x] Shelf Operations 
+//[#] Shelf Operations 
 
-message AddShelf {
-  string path = 1; //[/] Peer ID (#) is in the Path (#://root/folder/subfolder) 
-  string name = 2;
-  uint64 workspace_id = 3;
-  RequestMetadata metadata = 4;
-}
+message AddShelf { //[x] 
+  bytes peer_id = 1;
+  string path = 2; 
+  optional string name = 3;
+  optional string description = 4;
+  uint64 workspace_id = 5;
+  RequestMetadata metadata = 6;
+} //[x] Notify 
 
-message AddShelfResponse {
+message EditShelf { //[x] 
   uint64 shelf_id = 1;
+  uint64 workspace_id = 2;
+  string name = 3;
+  string description = 4;
+  RequestMetadata metadata = 6;
+} //[x] Notify 
+
+message EditShelfResponse { //[x] 
+  ResponseMetadata metadata = 1;
+}
+
+message AddShelfResponse { //[x] 
+  optional uint64 shelf_id = 1;
   ResponseMetadata metadata = 2;
 }
 
-message GetShelves {
+message GetShelves { //[x] 
   uint64 workspace_id = 1;
   RequestMetadata metadata = 2;
 }
 
-message ShelfList {
+message GetShelvesResponse { //[x] 
   repeated Shelf shelves = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message RemoveShelf { //[x] 
+  uint64 shelf_id = 1;
+  uint64 workspace_id = 2;
+  RequestMetadata metadata = 3;
+} //[x] Notify 
+
+message RemoveShelfResponse { //[x] 
+  ResponseMetadata metadata = 1;
 }
 
 message Shelf {
   uint64 shelf_id = 1;
   string name = 2;
-  string path = 3; //[/] Peer ID (#) is in the Path (#://root/folder/subfolder) 
+  bytes peer_id = 3;
+  string path = 4;
 }
 
-message RemoveShelf {
-  uint64 shelf_id = 1;
-  uint64 workspace_id = 2;
-  optional uint64 peer_id = 3;
-  RequestMetadata metadata = 4;
-}
+//[#] Tag Operations 
 
-message RemoveShelfResponse {
-  ResponseMetadata metadata = 1;
-}
+message CreateTag { //[x] 
+  uint64 workspace_id = 1;
+  string name = 2;
+  uint64 priority = 3;
+  optional uint64 parent_id = 4;
+  RequestMetadata metadata = 5;
+} //[x] Notify 
 
-//[x] Tag Operations 
-
-message CreateTag {
-  string name = 1;
-  uint64 priority = 2;
-  optional uint64 parent_id = 3;
-  RequestMetadata metadata = 4;
-}
-
-message CreateTagResponse {
+message CreateTagResponse { //[x] 
   optional uint64 tag_id = 1;
   ResponseMetadata metadata = 2;
 }
 
-message EditTag {
+message EditTag { //[x] 
+  uint64 tag_id = 1;
+  uint64 workspace_id = 2;
+  string name = 3;
+  uint64 priority = 4;
+  optional uint64 parent_id = 5;
+  RequestMetadata metadata = 6;
+} //[x] Notify 
+
+message EditTagResponse { //[x] 
+  ResponseMetadata metadata = 1;
+}
+
+message AttachTag { //[x] 
+  uint64 workspace_id = 1;
+  uint64 shelf_id = 2;
+  uint64 tag_id = 3;
+  string path = 4; 
+  uint64 workspace = 5;
+  RequestMetadata metadata = 6;
+} //[x] Notify 
+
+message AttachTagResponse { //[x] 
+  ResponseMetadata metadata = 1;
+}
+
+message DetachTag { //[x] 
+  uint64 workspace_id = 1;
+  uint64 shelf_id = 2;
+  uint64 tag_id = 3;
+  string path = 4;
+  uint64 workspace = 5;
+  RequestMetadata metadata = 6;
+} //[x] Notify 
+
+message StripTag { //[x] 
+  uint64 workspace_id = 1;
+  uint64 shelf_id = 2;
+  uint64 tag_id = 3;
+  string path = 4;
+  uint64 workspace = 5;
+  RequestMetadata metadata = 6;
+} //[x] Notify 
+
+message DetachTagResponse { //[x] 
+  ResponseMetadata metadata = 1;
+}
+
+message StripTagResponse { //[x] 
+  ResponseMetadata metadata = 1;
+}
+
+message DeleteTag { //[+] 
+  uint64 workspace_id = 1;
+  uint64 tag_id = 2;
+  bool force = 3;
+  RequestMetadata metadata = 4;
+} //[x] Notify 
+
+message DeleteTagResponse { //[x] 
+  ResponseMetadata metadata = 1;
+}
+
+message Tag {
   uint64 tag_id = 1;
   string name = 2;
   uint64 priority = 3;
-  uint64 parent_id = 4;
-  RequestMetadata metadata = 5;
+  optional uint64 parent_id = 4;
 }
 
-message EditTagResponse {
-  ResponseMetadata metadata = 1;
+//[#] File Structures 
+
+message FileOrd {
+  OrderBy order_by = 1;
+  bool ascending = 2;
 }
 
-message AttachTag {
-  uint64 tag_id = 1;
-  string path = 2; //[/] Peer ID (#) is in the Path (#://root/folder/subfolder) 
-  uint64 workspace = 3;
-  RequestMetadata metadata = 4;
+enum OrderBy {
+  NAME = 0;
+  SIZE = 1;
+  MODIFIED = 2;
+  ACCESSED = 3;
+  CREATED = 4;
 }
 
-message AttachTagResponse {
-  ResponseMetadata metadata = 1;
+message FileMetadata {
+  uint64 size = 1;
+  bool readonly = 2;
+  uint64 modified = 3;
+  uint64 accessed = 4;
+  uint64 created = 5;
+  UnixMetadata unix = 6;
+  WindowsMetadata windows = 7;
 }
 
-message DetachTag {
-  uint64 tag_id = 1;
-  string path = 2; //[/] Peer ID (#) is in the Path (#://root/folder/subfolder) 
-  RequestMetadata metadata = 3;
+message UnixMetadata {
+  uint32 permissions = 1;
+  uint32 uid = 2;
+  uint32 gid = 3;
 }
 
-message DetachTagResponse {
-  ResponseMetadata metadata = 1;
+message WindowsMetadata {
+  uint32 attributes = 1;
 }
 
-message DeleteTag {
-  uint64 tag_id = 1;
-  RequestMetadata metadata = 2;
+message File {
+  string path = 1;
+  FileMetadata metadata = 2;
 }
 
-message DeleteTagResponse {
-  ResponseMetadata metadata = 1;
+//[#] Notification Protocol 
+
+message Heartbeat {}
+
+message Operation {
+  ActionTarget target = 1;
+  uint64 id = 2;
+  ActionType action = 3;
+}
+
+enum ActionTarget {
+  WORKSPACE = 0;
+  SHELF = 1;
+  TAG = 2;
+}
+
+enum ActionType {
+  CREATE = 0;
+  EDIT = 1;
+  DELETE = 2;
+}
+
+message PeerConnected {
+  bytes peer_id = 1;
+  string name = 2;
 }
