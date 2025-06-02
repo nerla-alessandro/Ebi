@@ -15,6 +15,7 @@ macro_rules! impl_try_from {
         }
     };
 }
+include!(concat!(env!("OUT_DIR"), "/ebi.rpc.rs"));
 
 #[derive(Debug)]
 pub enum MessageType {
@@ -93,5 +94,3 @@ impl_try_from!(ActionTarget, Workspace, Shelf, Tag);
 impl_try_from!(ActionType, Create, Edit, Delete);
 
 impl_try_from!(SyncCode, Sync);
-
-tonic::include_proto!("ebi.rpc");

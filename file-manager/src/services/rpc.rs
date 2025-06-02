@@ -18,7 +18,6 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
-use tonic::{metadata, Response};
 use tower::Service;
 
 use super::peer;
