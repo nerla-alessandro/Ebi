@@ -221,11 +221,10 @@ message StripTagResponse { //[x]
   ResponseMetadata metadata = 1;
 }
 
-message DeleteTag { //[+] 
+message DeleteTag { //[x] 
   uint64 workspace_id = 1;
   uint64 tag_id = 2;
-  bool force = 3;
-  RequestMetadata metadata = 4;
+  RequestMetadata metadata = 3;
 } //[x] Notify 
 
 message DeleteTagResponse { //[x] 
