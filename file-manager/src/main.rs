@@ -3,22 +3,18 @@ use crate::rpc::*;
 use crate::services::peer::{Client, PeerService};
 use crate::services::rpc::{DaemonInfo, RpcService, TaskID};
 use anyhow::Result;
-use iroh::RelayMode;
 use iroh::{endpoint::Connection, Endpoint, NodeId, SecretKey};
 use prost::Message;
 use rpc::MessageType;
-use shelf::shelf::{Shelf, ShelfManager};
+use shelf::shelf::ShelfManager;
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::hash::Hash;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Instant;
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
-use tokio::time::{sleep, Duration};
 use tower::{Service, ServiceBuilder};
 
 mod query;
@@ -63,13 +59,18 @@ macro_rules! generate_request_match {
 #[tokio::main]
 async fn main() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
-    let sec_key = get_secret_key();
-    let ep = Endpoint::builder()
+    let ep = loop { // Generates a SK/PK pair until an unused one is found 
+        let sec_key = get_secret_key();
+        let ep = Endpoint::builder()
         .discovery_n0()
         .secret_key(sec_key)
         .alpns(vec![ALPN.to_vec()])
         .bind()
-        .await?; //[!] Error if PK is already in use
+        .await;
+        if let Ok(ep) = ep {
+            break ep
+        }
+    };
     println!("{:?}", ep.node_addr().await?.node_id.as_bytes());
     println!("{:?}", ep.node_addr().await?.node_id);
     let peers = Arc::new(RwLock::new(HashMap::<NodeId, Connection>::new()));
@@ -115,15 +116,15 @@ async fn main() -> Result<()> {
             conn = ep.accept() => {
                 let conn = conn.unwrap().await?;
                 peers.write().await.insert(conn.remote_node_id().unwrap(), conn.clone());
-                let (mut send, mut recv) = conn.accept_bi().await?;
-                let msg = recv.read_to_end(100).await?;
+                let (mut _send, mut recv) = conn.accept_bi().await?;
+                let _msg = recv.read_to_end(100).await?;
             }
         }
     }
 }
 
 async fn handle_client(
-    mut socket: Arc<Mutex<TcpStream>>,
+    socket: Arc<Mutex<TcpStream>>,
     addr: SocketAddr,
     mut service: RpcService,
 ) {
@@ -131,7 +132,7 @@ async fn handle_client(
     let mut socket = socket.lock().await;
 
     loop {
-        let bytes_read = match socket.read_exact(&mut header).await {
+        let _bytes_read = match socket.read_exact(&mut header).await {
             Ok(n) if n == 0 => {
                 println!("{}", n);
                 break;
@@ -149,7 +150,7 @@ async fn handle_client(
         let size: u64 = u64::from_le_bytes(header[2..HEADER_SIZE].try_into().unwrap());
         println!("size: {}", size);
         let mut buffer = vec![0u8; size as usize];
-        let bytes_read = match socket.read_exact(&mut buffer).await {
+        let _bytes_read = match socket.read_exact(&mut buffer).await {
             Ok(n) if n == 0 => 0,
             Ok(n) => n,
             Err(e) => {

@@ -35,14 +35,14 @@ pub struct FileMetadata {
 }
 
 #[derive(Debug, Clone)]
-struct UnixMetadata {
+pub struct UnixMetadata {
     permissions: u32,
     uid: u32,
     gid: u32,
 }
 
 #[derive(Debug, Clone)]
-struct WindowsMetadata {
+pub struct WindowsMetadata {
     attributes: u32,
 }
 

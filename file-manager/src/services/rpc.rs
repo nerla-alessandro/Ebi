@@ -1,38 +1,30 @@
 use crate::rpc::*;
 use crate::services::peer::PeerService;
 use crate::shelf::shelf::{ShelfInfo, ShelfManager, UpdateErr};
-use crate::tag::{self, TagManager, TagRef};
+use crate::tag::TagManager;
 use crate::workspace::{Workspace, WorkspaceId};
-use crate::{shelf, workspace};
 use iroh::NodeId;
 use std::collections::{HashMap, VecDeque};
-use std::ffi::OsStr;
-use std::fs::File;
 use std::future::Future;
-use std::io::Write;
-use std::ops::Add;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::ptr::read;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tower::Service;
 
-use super::peer;
-
 //[!] Handle poisoned locks 
 
 #[derive(Clone)]
 pub struct RpcService {
-    pub daemon_info: Arc<DaemonInfo>, //[!] DaemonInfo should be Arc<RwLock<DaemonInfo>>?
+    pub daemon_info: Arc<DaemonInfo>,
     pub peer_service: PeerService,
     pub tasks: Arc<HashMap<TaskID, JoinHandle<()>>>,
     pub tag_manager: Arc<RwLock<TagManager>>,
     pub shelf_manager: Arc<RwLock<ShelfManager>>,
     pub workspaces: Arc<RwLock<HashMap<WorkspaceId, Workspace>>>,
-    pub relay_responses: Arc<RwLock<HashMap<u64, (RequestCode, Box<dyn prost::Message>)>>>, //[/] (Code, Box<...>) can be avoided by using an Enum
+    pub relay_responses: Arc<RwLock<HashMap<u64, (RequestCode, Box<dyn prost::Message>)>>>, //[/] (Code, Box<...>) can be avoided by using an Enum 
     pub notify_queue: Arc<RwLock<VecDeque<Notification>>>,
 }
 pub type TaskID = u64;
@@ -112,7 +104,7 @@ impl Service<DeleteTag> for RpcService {
                         if let Some(shelf) = shelf {
                             let _shelf = shelf;
                             let _peer_id = peer_id;
-                            //[!] Remote Request
+                            //[TODO] Remote Request
                             // Relay the request via the peer service
                                 // Await for the response to be inserted into the relay_responses map
                             // Handle the responses
@@ -184,23 +176,23 @@ impl Service<StripTag> for RpcService {
                 .unwrap_or(false);
 
             let return_code = match (tag_found, workspace_found, local_shelf_found) {
-                (_, false, _) => 1,
-                (false, true, _) => 2,
+                (_, false, _) => 1, // Workspace not Found
+                (false, true, _) => 2, // Tag not Found
                 (true, true, false) => {
                     let workspace = workspaces.read().await;
                     let workspace = workspace.get(&req.workspace_id).unwrap();
                     let remote_shelf = workspace.remote_shelves.get(&req.shelf_id);
                     if let Some((_, peer_id)) = remote_shelf {
-                        //[!] Remote Request
+                        //[TODO] Remote Request
                         // Relay the request via the peer service
-                        // Await for the response to be inserted into the relay_responses map
-                        // Timeout?
+                            // Await for the response to be inserted into the relay_responses map
+                            // Timeout?
                         let _peer_id = peer_id;
                         let _relay_response = StripTagResponse { metadata: None };
                         //return_code = relay_response.metadata.return_code;
                         0
                     } else {
-                        3 // Shelf not found and not in remote peer
+                        3 // Shelf not Found
                     }
                 }
                 (true, true, true) => {
@@ -218,15 +210,11 @@ impl Service<StripTag> for RpcService {
                         .write()
                         .await;
                     let path = PathBuf::from(req.path);
-                    if path.is_dir() {
-                        //[!] this should be checked inside shelf.strip. Alongside
-                        //if path is valid for the shelf
-                        match shelf.strip(path, tag_ref.clone()) {
-                            Ok(_) => 0,
-                            Err(_) => 5, // Path not found
-                        }
-                    } else {
-                        4 // Shelf not found
+                    match shelf.strip(path, tag_ref.clone()) {
+                        Ok(_) => 0,
+                        Err(UpdateErr::PathNotDir) => 4, // Path not a Directory
+                        Err(UpdateErr::PathNotFound) => 5, // Path not Found
+                        Err(UpdateErr::FileNotFound) => 6 // "Nothing ever happens" -Chudda
                     }
                 }
             };
@@ -296,7 +284,7 @@ impl Service<DetachTag> for RpcService {
                     let workspace = workspace_r.get(&req.workspace_id).unwrap();
                     let remote_shelf = workspace.remote_shelves.get(&req.shelf_id);
                     if let Some((_, peer_id)) = remote_shelf {
-                        //[!] Remote Request
+                        //[TODO] Remote Request
                         // Relay the request via the peer service
                         // Await for the response to be inserted into the relay_responses map
                         // Timeout?
@@ -337,6 +325,7 @@ impl Service<DetachTag> for RpcService {
                         Ok(false) => 6,                    // File not tagged
                         Err(UpdateErr::FileNotFound) => 5, // File not found
                         Err(UpdateErr::PathNotFound) => 4, // Path not found
+                        Err(UpdateErr::PathNotDir) => 6  // "Nothing ever happens" -Chudda
                     }
                 }
             };
@@ -402,13 +391,12 @@ impl Service<AttachTag> for RpcService {
                     let workspace = workspace_r.get(&req.workspace_id).unwrap();
                     let remote_shelf = workspace.remote_shelves.get(&req.shelf_id);
                     if let Some((_, _peer_id)) = remote_shelf {
-                        //[!] Remote Request
+                        //[TODO] Remote Request
                         // Relay the request via the peer service
-                        // Await for the response to be inserted into the relay_responses map
-                        // Timeout?
+                            // Await for the response to be inserted into the relay_responses map
+                            // Timeout?
                         let _relay_response = AttachTagResponse { metadata: None };
-                        //return_code = relay_response.metadata.return_code;
-                        0 // response is 0
+                        0 // Success
                     } else {
                         3 // Shelf not found and not in remote peer
                     }
@@ -442,6 +430,7 @@ impl Service<AttachTag> for RpcService {
                         Ok(false) => 6,                    // Already tagged
                         Err(UpdateErr::FileNotFound) => 5, // File not found
                         Err(UpdateErr::PathNotFound) => 4, // Path not found
+                        Err(UpdateErr::PathNotDir) => 7 // "Nothing ever happens" -Chudda
                     }
                 }
             };
@@ -499,11 +488,11 @@ impl Service<RemoveShelf> for RpcService {
                     let workspace = workspace_r.get(&req.workspace_id).unwrap();
                     let remote_shelf = workspace.remote_shelves.get(&req.shelf_id);
                     if let Some((_, _peer_id)) = remote_shelf {
-                        //[!] Remote Request
+                        //[TODO] Remote Request
                         // Relay the request via the peer service
                         // Await for the response to be inserted into the relay_responses map
                         // Timeout?
-                        let relay_response = RemoveShelfResponse { metadata: None };
+                        let _relay_response = RemoveShelfResponse { metadata: None };
                         //return_code = relay_response.metadata.return_code;
                         0
                     } else {
@@ -585,11 +574,11 @@ impl Service<EditShelf> for RpcService {
                     let workspace = workspace_r.get(&req.workspace_id).unwrap();
                     let remote_shelf = workspace.remote_shelves.get(&req.shelf_id);
                     if let Some((_, _peer_id)) = remote_shelf {
-                        //[!] Remote Request
+                        //[TODO] Remote Request
                         // Relay the request via the peer service
                         // Await for the response to be inserted into the relay_responses map
                         // Timeout?
-                        let relay_response = EditShelfResponse { metadata: None };
+                        let _relay_response = EditShelfResponse { metadata: None };
                         //return_code = relay_response.metadata.return_code;
                         0
                     } else {
@@ -658,14 +647,14 @@ impl Service<AddShelf> for RpcService {
                 (false, _) => 2,
                 (true, Err(_)) => 1,
                 (true, Ok(peer_id)) if peer_id != daemon_info.id => {
-                    //[!] Remote Request
-                    let relay_response = AddShelfResponse {
+                    //[TODO] Remote Request
+                    let _relay_response = AddShelfResponse {
                         shelf_id: None,
                         metadata: None,
                     };
                     0
                 }
-                (true, Ok(peer_id)) => {
+                (true, Ok(_)) => {
                     let path = PathBuf::from(req.path.clone());
                     let shelf_id_res = shelf_manager.write().await.add_shelf(path.clone());
                     match shelf_id_res {
@@ -950,7 +939,7 @@ impl Service<GetShelves> for RpcService {
                         peer_id: daemon_info.id.as_bytes().to_vec(),
                         shelf_id: *id,
                         name: shelf_info.name.clone(),
-                        path: shelf_info.root_path.to_string_lossy().to_string(), //[!] Better way to handle this?
+                        path: shelf_info.root_path.to_string_lossy().into_owned(),
                     });
                 }
                 for (id, (shelf_info, peer_id)) in &workspace.remote_shelves {
@@ -958,7 +947,7 @@ impl Service<GetShelves> for RpcService {
                         peer_id: peer_id.as_bytes().to_vec(),
                         shelf_id: *id,
                         name: shelf_info.name.clone(),
-                        path: shelf_info.root_path.to_string_lossy().to_string(), //[!] Better way to handle this?
+                        path: shelf_info.root_path.to_string_lossy().into_owned(),
                     });
                 }
             }

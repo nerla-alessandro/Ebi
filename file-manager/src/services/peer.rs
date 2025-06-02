@@ -1,7 +1,6 @@
 use iroh::{
     endpoint::Connection,
-    protocol::{ProtocolHandler, Router},
-    Endpoint, NodeId,
+    NodeId,
 };
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -36,8 +35,7 @@ impl Service<String> for PeerService {
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, req: String) -> Self::Future {
-        Box::pin(async move {});
+    fn call(&mut self, _req: String) -> Self::Future {
         todo!()
     }
 }

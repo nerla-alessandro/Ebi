@@ -1,7 +1,6 @@
-use crate::query::{FileOrder, OrderedFileID, Query, QueryErr, RetrieveErr, RetrieveService};
+use crate::query::{FileOrder, OrderedFileID, Query, RetrieveErr, RetrieveService};
 use crate::services::cache::CacheService;
 use crate::services::peer::PeerService;
-use crate::tag::TagRef;
 use crate::workspace::WorkspaceId;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -31,7 +30,7 @@ struct Retrieve {
 impl RetrieveService for Retrieve {
     async fn get_files<T: FileOrder>(
         &self,
-        uuid: (u64, u64),
+        _uuid: (u64, u64),
     ) -> Result<BTreeSet<OrderedFileID<T>>, RetrieveErr> {
         todo!();
     }
@@ -63,20 +62,19 @@ where
     }
 
     fn call(&mut self, req: Request<'b, FileOrd>) -> Self::Future {
-        todo!();
-        Box::pin(async move {
+        let _ = Box::pin(async move {
             let query_str = req.query;
-            let mut query = Query::new(&query_str, req.ord.clone()).map_err(|_| ())?;
+            let mut _query = Query::new(&query_str, req.ord.clone()).map_err(|_| ());
             // Ok until now
             //query.evaluate(self.retrieve_serv);
-
-            let peer_service = &self.peer.clone();
-            let join_handle: JoinHandle<()> = tokio::spawn(async move {
+            
+            let _peer_service = &self.peer.clone();
+            let _join_handle: JoinHandle<()> = tokio::spawn(async move {
                 //query.evaluate(self.retrieve_serv);
                 //peer_service.call();
             });
-            Ok(())
-        })
+        });
+        todo!();
     }
 }
 
@@ -89,8 +87,7 @@ impl<FileOrd: Clone + FileOrder> Service<(Query<FileOrd>, WorkspaceId)> for Quer
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, req: (Query<FileOrd>, WorkspaceId)) -> Self::Future {
-        Box::pin(async move {});
+    fn call(&mut self, _req: (Query<FileOrd>, WorkspaceId)) -> Self::Future {
         todo!()
     }
 }

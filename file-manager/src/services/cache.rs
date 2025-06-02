@@ -60,16 +60,16 @@ impl<T: FileOrder + Clone> Service<RetrieveFiles<T>> for CacheService {
     }
 
     fn call(&mut self, req: RetrieveFiles<T>) -> Self::Future {
-        Box::pin(async move {
+        let _ = Box::pin(async move {
             match req {
-                RetrieveFiles::GetAll(work_id, ord) => {
-                    if let Some(workspace) = &self.workspaces.read().unwrap().get(&work_id) {
+                RetrieveFiles::GetAll(work_id, _ord) => {
+                    if let Some(_workspace) = &self.workspaces.read().unwrap().get(&work_id) {
                         todo!();
                     } else {
                         return CacheError::WorkspaceNotFound;
                     }
                 }
-                RetrieveFiles::GetTag(work_id, ord, tag) => {}
+                RetrieveFiles::GetTag(_work_id, _ord, _tag) => {}
             }
             todo!();
         });
