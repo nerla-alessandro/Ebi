@@ -56,6 +56,13 @@ macro_rules! generate_request_match {
     };
 }
 
+macro_rules! handle_response {
+    ($responses:expr, $code:path, $response:expr) => {
+        let res = $response.clone();
+        $responses.write().await.insert($response.metadata.unwrap().request_id, ($code, Box::new(res)));
+    };
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
@@ -82,7 +89,7 @@ async fn main() -> Result<()> {
         workspace::WorkspaceId,
         workspace::Workspace,
     >::new()));
-    let relay_responses = Arc::new(RwLock::new(HashMap::new()));
+    let responses = Arc::new(RwLock::new(HashMap::new()));
     let notify_queue = Arc::new(RwLock::new(VecDeque::new()));
     let id: NodeId = ep.node_id();
     let service = ServiceBuilder::new().service(RpcService {
@@ -91,7 +98,7 @@ async fn main() -> Result<()> {
             peers: peers.clone(),
             clients: clients.clone(),
         },
-        relay_responses: relay_responses.clone(),
+        responses: responses.clone(),
         notify_queue: notify_queue.clone(),
         tasks: tasks.clone(),
         tag_manager: tag_manager.clone(),
@@ -110,7 +117,7 @@ async fn main() -> Result<()> {
                 };
                 clients.write().await.push(client);
                 tokio::spawn(async move {
-                    handle_client(stream.clone(), addr, service).await;
+                    handle_client(stream.clone(), addr, service, responses.clone()).await;
                 });
             },
             conn = ep.accept() => {
@@ -127,6 +134,7 @@ async fn handle_client(
     socket: Arc<Mutex<TcpStream>>,
     addr: SocketAddr,
     mut service: RpcService,
+    responses: Arc<RwLock<HashMap<u64, (RequestCode, Box<dyn prost::Message>)>>>
 ) {
     let mut header = vec![0; HEADER_SIZE];
     let mut socket = socket.lock().await;
@@ -189,19 +197,27 @@ async fn handle_client(
                         let res = CreateTagResponse::decode(&*buffer).unwrap();
                         println!("CreateTag Response received");
                         println!("\tTag ID: {:?}", res.tag_id);
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::CreateTag, res);
                     }
                     Ok(RequestCode::CreateWorkspace) => {
                         let res = CreateWorkspaceResponse::decode(&*buffer).unwrap();
                         println!("CreateWorkspace Response received");
                         println!("\tWorkspace ID: {:?}", res.workspace_id);
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::CreateWorkspace, res);
                     }
                     Ok(RequestCode::EditWorkspace) => {
-                        let _ = EditWorkspaceResponse::decode(&*buffer).unwrap();
+                        let res = EditWorkspaceResponse::decode(&*buffer).unwrap();
                         println!("EditWorkspace Response received");
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::EditWorkspace, res);
                     }
                     Ok(RequestCode::DeleteWorkspace) => {
-                        let _ = DeleteWorkspaceResponse::decode(&*buffer).unwrap();
+                        let res = DeleteWorkspaceResponse::decode(&*buffer).unwrap();
                         println!("DeleteWorkspace Response received");
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::DeleteWorkspace, res);
                     }
                     Ok(RequestCode::GetWorkspaces) => {
                         let res = GetWorkspacesResponse::decode(&*buffer).unwrap();
@@ -210,6 +226,8 @@ async fn handle_client(
                         for workspace in &res.workspaces {
                             println!("\t({:?}): {:?}", workspace.workspace_id, workspace.name);
                         }
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::GetWorkspaces, res);
                     }
                     Ok(RequestCode::GetShelves) => {
                         let res = GetShelvesResponse::decode(&*buffer).unwrap();
@@ -219,39 +237,57 @@ async fn handle_client(
                             println!("\t({:?}): {:?}", shelf.shelf_id, shelf.name);
                             println!("\t\t{:?}", shelf.path);
                         }
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::GetShelves, res);
                     }
                     Ok(RequestCode::EditTag) => {
-                        let _ = EditTagResponse::decode(&*buffer).unwrap();
+                        let res = EditTagResponse::decode(&*buffer).unwrap();
                         println!("EditTag Response received");
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::EditTag, res);
                     }
                     Ok(RequestCode::AddShelf) => {
                         let res = AddShelfResponse::decode(&*buffer).unwrap();
                         println!("AddShelf Response received");
                         println!("\tShelf ID: {:?}", res.shelf_id);
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::AddShelf, res);
                     }
                     Ok(RequestCode::RemoveShelf) => {
-                        let _ = RemoveShelfResponse::decode(&*buffer).unwrap();
+                        let res = RemoveShelfResponse::decode(&*buffer).unwrap();
                         println!("RemoveShelf Response received");
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::RemoveShelf, res);
                     }
                     Ok(RequestCode::AttachTag) => {
-                        let _ = AttachTagResponse::decode(&*buffer).unwrap();
+                        let res = AttachTagResponse::decode(&*buffer).unwrap();
                         println!("AttachTag Response received");
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::AttachTag, res);
                     }
                     Ok(RequestCode::DetachTag) => {
-                        let _ = DetachTagResponse::decode(&*buffer).unwrap();
+                        let res = DetachTagResponse::decode(&*buffer).unwrap();
                         println!("DetachTag Response received");
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::DetachTag, res);
                     }
                     Ok(RequestCode::DeleteTag) => {
-                        let _ = DeleteTagResponse::decode(&*buffer).unwrap();
+                        let res = DeleteTagResponse::decode(&*buffer).unwrap();
                         println!("DeleteTag Response received");
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::DeleteTag, res);
                     }
                     Ok(RequestCode::EditShelf) => {
-                        let _ = EditShelfResponse::decode(&*buffer).unwrap();
+                        let res = EditShelfResponse::decode(&*buffer).unwrap();
                         println!("EditShelf Response received");
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::EditShelf, res);
                     }
                     Ok(RequestCode::StripTag) => {
-                        let _ = rpc::StripTagResponse::decode(&*buffer).unwrap();
+                        let res = rpc::StripTagResponse::decode(&*buffer).unwrap();
                         println!("StripTag Response received");
+                        // Standard Response Handling
+                        handle_response!(responses, RequestCode::StripTag, res);
                     }
                     Ok(_) => {
                         todo!();

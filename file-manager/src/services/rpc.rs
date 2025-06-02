@@ -24,7 +24,7 @@ pub struct RpcService {
     pub tag_manager: Arc<RwLock<TagManager>>,
     pub shelf_manager: Arc<RwLock<ShelfManager>>,
     pub workspaces: Arc<RwLock<HashMap<WorkspaceId, Workspace>>>,
-    pub relay_responses: Arc<RwLock<HashMap<u64, (RequestCode, Box<dyn prost::Message>)>>>, //[/] (Code, Box<...>) can be avoided by using an Enum 
+    pub responses: Arc<RwLock<HashMap<u64, (RequestCode, Box<dyn prost::Message>)>>>, //[/] (Code, Box<...>) can be avoided by using an Enum 
     pub notify_queue: Arc<RwLock<VecDeque<Notification>>>,
 }
 pub type TaskID = u64;
