@@ -22,7 +22,7 @@ use tower::Service;
 
 use super::peer;
 
-//[!] Handle poisoned locks
+//[!] Handle poisoned locks 
 
 #[derive(Clone)]
 pub struct RpcService {
@@ -98,25 +98,6 @@ impl Service<DeleteTag> for RpcService {
                         .unwrap();
                     let workspace = workspaces_r.get(&req.workspace_id).unwrap();
 
-                    if !req.force {
-                        // check if tags are present if remove is not forced
-                        for (_, shelf_info) in workspace.local_shelves.iter() {
-                            let shelf_manager = shelf_manager.read().await;
-                            let shelf = shelf_manager.shelves.get(&shelf_info.id);
-                            if let Some(shelf) = shelf {
-                                if shelf.read().await.contains(tag.clone()) {
-                                    return Ok(DeleteTagResponse {
-                                        metadata: Some(ResponseMetadata {
-                                            request_id: metadata.request_id,
-                                            return_code: 1,
-                                            error_data,
-                                        }),
-                                    });
-                                }
-                            }
-                        }
-                    }
-
                     for (_, shelf_info) in workspace.local_shelves.iter() {
                         let shelf_manager_r = shelf_manager.read().await;
                         let shelf = shelf_manager_r.shelves.get(&shelf_info.id);
@@ -126,15 +107,15 @@ impl Service<DeleteTag> for RpcService {
                     }
 
                     for (_, (shelf_info, peer_id)) in workspace.remote_shelves.iter() {
-                        //[?] How to avoid partial removals upon HALT ??
-                        //[/] Remote shelves may delete the tag even though it is present in other peers' shelves
                         let shelf_manager = shelf_manager.read().await;
                         let shelf = shelf_manager.shelves.get(&shelf_info.id);
                         if let Some(shelf) = shelf {
                             let _shelf = shelf;
                             let _peer_id = peer_id;
-                            //[!] Relay the request via the peer service
-                            //[!] Handle the response(s), if any (especially HALT)
+                            //[!] Remote Request
+                            // Relay the request via the peer service
+                                // Await for the response to be inserted into the relay_responses map
+                            // Handle the responses
                         }
                     }
                 } // Tag_manager read lock goes out of scope before requesting write
