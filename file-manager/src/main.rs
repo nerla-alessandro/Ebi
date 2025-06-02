@@ -16,6 +16,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tower::{Service, ServiceBuilder};
+use tokio::sync::broadcast;
 
 mod query;
 mod rpc;
@@ -24,7 +25,7 @@ mod shelf;
 mod tag;
 mod workspace;
 
-const HEADER_SIZE: usize = 10;
+const HEADER_SIZE: usize = 10; //[!] Move to Constant file 
 const ALPN: &[u8] = b"ebi";
 
 macro_rules! generate_request_match {
@@ -92,6 +93,10 @@ async fn main() -> Result<()> {
     let responses = Arc::new(RwLock::new(HashMap::new()));
     let notify_queue = Arc::new(RwLock::new(VecDeque::new()));
     let id: NodeId = ep.node_id();
+    let (tx, mut rx) = broadcast::channel::<u64>(64); 
+    //[/] The Peer service subscribes to the ResponseHandler when a request is sent. 
+    //[/] It is then notified when a response is received so it can acquire the read lock on the Response map.
+
     let service = ServiceBuilder::new().service(RpcService {
         daemon_info: Arc::new(DaemonInfo::new(id, "".to_string())),
         peer_service: PeerService {
@@ -116,8 +121,9 @@ async fn main() -> Result<()> {
                     stream: stream.clone()
                 };
                 clients.write().await.push(client);
+                let responses = responses.clone();
                 tokio::spawn(async move {
-                    handle_client(stream.clone(), addr, service, responses.clone()).await;
+                    handle_client(stream.clone(), addr, service, responses).await;
                 });
             },
             conn = ep.accept() => {
