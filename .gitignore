@@ -9,3 +9,6 @@ Automated Test Procedures/Tests/Workspaces/Generated/TestDir.tag
 
 # Ignore Design Documents
 design/**/*
+
+# Ignore IDE Files
+.vscode/**/*
