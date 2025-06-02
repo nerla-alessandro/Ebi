@@ -1,10 +1,9 @@
-use crate::shelf::file::{FileMetadata, FileRef};
-use crate::tag::{self, TagErr, TagManager, TagRef};
-use std::collections::HashMap;
+use iroh::NodeId;
+
+use crate::shelf::file::FileMetadata;
+use crate::tag::{TagErr, TagManager};
 use std::collections::{BTreeSet, HashSet};
-use std::fmt::Binary;
 use std::path::PathBuf;
-use std::result;
 use std::sync::{Arc, RwLock};
 
 #[derive(Debug)]
@@ -119,11 +118,6 @@ struct Proposition {
 }
 
 #[derive(Debug, Clone)]
-struct PeerID {
-    id: String, //[!] Should be a UUID
-}
-
-#[derive(Debug, Clone)]
 pub struct OrderedFileID<FileOrder> {
     file_id: FileID,
     order: FileOrder,
@@ -131,7 +125,7 @@ pub struct OrderedFileID<FileOrder> {
 
 impl PartialEq for OrderedFileID<Name> {
     fn eq(&self, other: &Self) -> bool {
-        self.file_id.path.file_name() == other.file_id.path.file_name() //[!] path.file_name() is an Option (can, theoretically, be None)
+        self.file_id.path.file_name() == other.file_id.path.file_name() // path.file_name() is an Option (can, theoretically, be None)
     }
 }
 
@@ -285,13 +279,13 @@ impl Ord for OrderedFileID<Unordered> {
 
 #[derive(Debug, Clone)]
 struct FileID {
-    root: Option<PeerID>, //[/] Whether the file is local or remote
+    root: Option<NodeId>, // Whether the file is local or remote
     path: PathBuf,
     metadata: FileMetadata,
 }
 
 impl FileID {
-    fn new(root: Option<PeerID>, path: PathBuf, metadata: FileMetadata) -> Self {
+    fn new(root: Option<NodeId>, path: PathBuf, metadata: FileMetadata) -> Self {
         FileID {
             root,
             path,
@@ -322,7 +316,7 @@ impl<T: FileOrder + Clone> Query<T> {
         self.formula.get_tags()
     }
 
-    //[!] Should be executed inside the QueryService
+    //[!] Should be executed inside the QueryService 
     pub fn validate<R>(
         &mut self,
         workspace_id: u64,
@@ -429,7 +423,7 @@ impl<T: FileOrder + Clone> Query<T> {
 
 impl Formula {
     fn recursive_simplify(formula: Formula) -> (Formula, bool) {
-        //[/] Further simplification is possible but NP-Hard
+        // Further simplification is possible but NP-Hard 
         match formula {
             Formula::Proposition(_) => {
                 return (formula, false);
@@ -585,7 +579,7 @@ pub enum RetrieveErr {
 pub trait RetrieveService {
     async fn get_files<T: FileOrder>(
         &self,
-        uuid: (u64, u64),
+        _uuid: (u64, u64),
     ) -> Result<BTreeSet<OrderedFileID<T>>, RetrieveErr> {
         todo!();
     }
