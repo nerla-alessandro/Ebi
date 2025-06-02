@@ -1,4 +1,4 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tonic_build::compile_protos("src/rpc/ebi.proto")?;
+    prost_build::compile_protos(&["src/rpc/ebi.proto"], &["src/rpc"])?;
     Ok(())
 }

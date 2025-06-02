@@ -14,9 +14,9 @@ iroh = "0.34.1"
 iroh-base = "0.34.1"
 anyhow = "1.0.97"
 rand = "0.8.5"
-tonic = { version = "0.13", features = ["codegen", "prost"], default-features = false }
 prost = "0.13"
+prost-types = "0.13"
 regex = "1.11.1"
 
 [build-dependencies]
-tonic-build = { version = "0.13", features = ["prost"], default-features = false }
+prost-build = { version = "0.13" }
