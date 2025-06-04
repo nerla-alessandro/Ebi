@@ -1,7 +1,7 @@
 use iroh::{
-    endpoint::Connection,
     NodeId,
 };
+use tokio::sync::mpsc::Sender;
 use crate::rpc::*;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -12,6 +12,7 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::net::TcpStream;
+use tokio::net::{tcp::{OwnedReadHalf, OwnedWriteHalf}};
 use tokio::sync::{Mutex, RwLock};
 use tower::Service;
 use prost::Message;
@@ -24,20 +25,18 @@ pub enum PeerError {
 
 #[derive(Clone)]
 pub struct PeerService {
-    pub peers: Arc<RwLock<HashMap<NodeId, Connection>>>,
+    pub peers: Arc<RwLock<HashMap<NodeId, Sender<Vec<u8>>>>>,
     pub clients: Arc<RwLock<Vec<Client>>>,
 }
 
 pub struct Client {
     pub hash: u64,
     pub addr: SocketAddr,
-    pub stream: Arc<Mutex<TcpStream>>,
+    pub r_stream: Arc<Mutex<OwnedReadHalf>>,
+    pub w_stream: Arc<Mutex<OwnedWriteHalf>>,
 }
 
 impl PeerService {
-    fn send(peer_id: NodeId, message: prost::Message) {
-        todo!();
-    }
 }
 
 impl Service<(NodeId, DeleteTag)> for PeerService {

@@ -4,6 +4,7 @@ use crate::services::peer::{Client, PeerService};
 use crate::services::rpc::{DaemonInfo, RpcService, TaskID};
 use anyhow::Result;
 use iroh::{endpoint::Connection, Endpoint, NodeId, SecretKey};
+use iroh::endpoint::{SendStream, RecvStream};
 use prost::Message;
 use rpc::MessageType;
 use shelf::shelf::ShelfManager;
@@ -11,12 +12,12 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncRead, AsyncWrite};
+use tokio::net::{TcpListener, TcpStream, tcp::{OwnedReadHalf, OwnedWriteHalf}};
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tower::{Service, ServiceBuilder};
-use tokio::sync::broadcast;
+use tokio::sync::{mpsc, watch, mpsc::Sender};
 
 mod query;
 mod rpc;
@@ -81,7 +82,7 @@ async fn main() -> Result<()> {
     };
     println!("{:?}", ep.node_addr().await?.node_id.as_bytes());
     println!("{:?}", ep.node_addr().await?.node_id);
-    let peers = Arc::new(RwLock::new(HashMap::<NodeId, Connection>::new()));
+    let peers = Arc::new(RwLock::new(HashMap::<NodeId, Sender<Vec<u8>>>::new()));
     let clients = Arc::new(RwLock::new(Vec::<Client>::new()));
     let tasks = Arc::new(HashMap::<TaskID, JoinHandle<()>>::new());
     let tag_manager = Arc::new(RwLock::new(tag::TagManager::new()));
@@ -93,7 +94,7 @@ async fn main() -> Result<()> {
     let responses = Arc::new(RwLock::new(HashMap::new()));
     let notify_queue = Arc::new(RwLock::new(VecDeque::new()));
     let id: NodeId = ep.node_id();
-    let (tx, mut rx) = broadcast::channel::<u64>(64); 
+    let (tx, mut rx) = watch::channel::<u64>(64); 
     //[/] The Peer service subscribes to the ResponseHandler when a request is sent. 
     //[/] It is then notified when a response is received so it can acquire the read lock on the Response map.
 
@@ -113,40 +114,64 @@ async fn main() -> Result<()> {
     loop {
         tokio::select! {
             Ok((stream, addr)) = listener.accept() => {
-                let service = service.clone();
-                let stream: Arc<Mutex<TcpStream>> = Arc::new(Mutex::new(stream));
+                let mut service = service.clone();
+                let (mut read, mut write) = stream.into_split();
                 let client = Client {
                     hash: 0,
                     addr,
-                    stream: stream.clone()
+                    w_stream: w_stream.clone(),
+                    r_stream: r_stream.clone()
                 };
                 clients.write().await.push(client);
                 let responses = responses.clone();
                 tokio::spawn(async move {
-                    handle_client(stream.clone(), addr, service, responses).await;
+                    handle_client(&mut read, &mut write, & mut service, &responses).await;
                 });
             },
             conn = ep.accept() => {
                 let conn = conn.unwrap().await?;
-                peers.write().await.insert(conn.remote_node_id().unwrap(), conn.clone());
-                let (mut _send, mut recv) = conn.accept_bi().await?;
-                let _msg = recv.read_to_end(100).await?;
+                //[!] We need to check that the peer is authorized
+                let mut service = service.clone();
+                let responses = responses.clone();
+                let (tx, mut rx) = mpsc::channel::<Vec<u8>>(64); 
+                // [!] handle multi accept_bi?
+                peers.write().await.insert(conn.remote_node_id().unwrap(), tx);
+                tokio::spawn(async move {
+                    loop {
+                        tokio::select! {
+                            Ok((mut write, mut read)) = conn.accept_bi() => {
+                                let w_stream : Arc<Mutex<SendStream>> = Arc::new(Mutex::new(write));
+                                let r_stream : Arc<Mutex<RecvStream>> = Arc::new(Mutex::new(read));
+                                w_stream.clone();
+                                r_stream.clone();
+                                service.clone();
+                                handle_client(&mut read, &mut write, &mut service, &responses).await;
+                            }
+                            Some(bytes) = rx.recv() => {
+                                if let Ok((mut write, read)) = conn.open_bi().await {
+                                    write.write_all(&bytes);
+                                    handle_client(&mut read, &mut write, &mut service, &responses).await;
+                                }
+                            }
+                        }
+                    }
+                });
             }
         }
     }
 }
 
-async fn handle_client(
-    socket: Arc<Mutex<TcpStream>>,
-    addr: SocketAddr,
-    mut service: RpcService,
-    responses: Arc<RwLock<HashMap<u64, (RequestCode, Box<dyn prost::Message>)>>>
+async fn handle_client<U: AsyncReadExt + Unpin, B: AsyncWriteExt + Unpin>(
+    r_socket: &mut U,
+    w_socket: &mut B,
+    //addr: SocketAddr,
+    service: & mut RpcService,
+    responses: &Arc<RwLock<HashMap<u64, (RequestCode, Box<dyn prost::Message>)>>>
 ) {
     let mut header = vec![0; HEADER_SIZE];
-    let mut socket = socket.lock().await;
 
     loop {
-        let _bytes_read = match socket.read_exact(&mut header).await {
+        let _bytes_read = match r_socket.read_exact(&mut header).await {
             Ok(n) if n == 0 => {
                 println!("{}", n);
                 break;
@@ -164,7 +189,7 @@ async fn handle_client(
         let size: u64 = u64::from_le_bytes(header[2..HEADER_SIZE].try_into().unwrap());
         println!("size: {}", size);
         let mut buffer = vec![0u8; size as usize];
-        let _bytes_read = match socket.read_exact(&mut buffer).await {
+        let _bytes_read = match r_socket.read_exact(&mut buffer).await {
             Ok(n) if n == 0 => 0,
             Ok(n) => n,
             Err(e) => {
@@ -181,7 +206,7 @@ async fn handle_client(
                     msg_code,
                     buffer,
                     service,
-                    socket,
+                    w_socket,
                     (RequestCode::CreateTag, CreateTag),
                     (RequestCode::CreateWorkspace, CreateWorkspace),
                     (RequestCode::EditWorkspace, EditWorkspace),
@@ -322,7 +347,7 @@ async fn handle_client(
             }
         }
     }
-    println!("Client disconnected: {}", addr);
+    //println!("Client disconnected: {}", addr);
 }
 
 fn get_secret_key() -> SecretKey {
