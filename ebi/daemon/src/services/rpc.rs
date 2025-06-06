@@ -57,7 +57,6 @@ fn parse_peer_id(bytes: &[u8]) -> Result<NodeId, ()> {
     let bytes: &[u8; 32] = bytes.try_into().map_err(|_| ())?;
     NodeId::from_bytes(bytes).map_err(|_| ())
 }
-trait Test {}
 
 impl Service<Response> for RpcService {
     type Response = ();
