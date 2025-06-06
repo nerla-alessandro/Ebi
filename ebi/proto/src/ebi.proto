@@ -2,13 +2,13 @@ syntax = "proto3";
 package ebi.rpc;
 
 message RequestMetadata {
-  string request_uuid = 2;
+  bytes request_uuid = 2;
   uint64 source_id = 1;
-  uint64 relayed = 3;
+  bool relayed = 3;
 }
 
 message ResponseMetadata {
-  string request_uuid = 1;
+  bytes request_uuid = 1;
   uint32 return_code = 2;
   optional ErrorData error_data = 3;
 }
