@@ -67,7 +67,7 @@ where
             let mut _query = Query::new(&query_str, req.ord.clone()).map_err(|_| ());
             // Ok until now
             //query.evaluate(self.retrieve_serv);
-            
+
             let _peer_service = &self.peer.clone();
             let _join_handle: JoinHandle<()> = tokio::spawn(async move {
                 //query.evaluate(self.retrieve_serv);

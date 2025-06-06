@@ -59,7 +59,7 @@ impl FileMetadata {
                     created: None,
                     unix: None,
                     windows: None,
-                }
+                };
             }
         };
 
