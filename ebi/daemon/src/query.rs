@@ -316,7 +316,7 @@ impl<T: FileOrder + Clone> Query<T> {
         self.formula.get_tags()
     }
 
-    //[!] Should be executed inside the QueryService 
+    //[!] Should be executed inside the QueryService
     pub fn validate<R>(
         &mut self,
         workspace_id: u64,
@@ -423,7 +423,7 @@ impl<T: FileOrder + Clone> Query<T> {
 
 impl Formula {
     fn recursive_simplify(formula: Formula) -> (Formula, bool) {
-        // Further simplification is possible but NP-Hard 
+        // Further simplification is possible but NP-Hard
         match formula {
             Formula::Proposition(_) => {
                 return (formula, false);

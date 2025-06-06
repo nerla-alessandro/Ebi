@@ -1,8 +1,8 @@
-use crate::rpc::*;
 use crate::services::peer::PeerService;
 use crate::shelf::shelf::{ShelfInfo, ShelfManager, UpdateErr};
 use crate::tag::TagManager;
 use crate::workspace::{Workspace, WorkspaceId};
+use ebi_proto::rpc::*;
 use iroh::NodeId;
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
@@ -12,9 +12,11 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
+use tokio::sync::watch::{Sender, Receiver};
 use tower::Service;
+use uuid::Uuid;
 
-//[!] Handle poisoned locks 
+//[!] Handle poisoned locks
 
 #[derive(Clone)]
 pub struct RpcService {
@@ -24,8 +26,10 @@ pub struct RpcService {
     pub tag_manager: Arc<RwLock<TagManager>>,
     pub shelf_manager: Arc<RwLock<ShelfManager>>,
     pub workspaces: Arc<RwLock<HashMap<WorkspaceId, Workspace>>>,
-    pub responses: Arc<RwLock<HashMap<u64, (RequestCode, Box<dyn prost::Message>)>>>, //[/] (Code, Box<...>) can be avoided by using an Enum 
+    pub responses: Arc<RwLock<HashMap<Uuid, Response>>>,
     pub notify_queue: Arc<RwLock<VecDeque<Notification>>>,
+    pub broadcast: Sender<Uuid>,
+    pub watcher: Receiver<Uuid>
 }
 pub type TaskID = u64;
 
@@ -52,6 +56,30 @@ impl DaemonInfo {
 fn parse_peer_id(bytes: &[u8]) -> Result<NodeId, ()> {
     let bytes: &[u8; 32] = bytes.try_into().map_err(|_| ())?;
     NodeId::from_bytes(bytes).map_err(|_| ())
+}
+trait Test {}
+
+impl Service<Response> for RpcService {
+    type Response = ();
+    type Error = ();
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: Response) -> Self::Future {
+        let responses = self.responses.clone();
+        let broadcast = self.broadcast.clone();
+        Box::pin(async move {
+            let res = Response::from(req);
+            let metadata = res.metadata().ok_or(())?;
+            let uuid = Uuid::try_from(metadata.request_uuid).map_err(|_| ())?;
+            responses.write().await.insert(uuid, res);
+            broadcast.send(uuid).map_err(|_| ())?;
+            Ok(())
+        })
+    }
 }
 
 impl Service<DeleteTag> for RpcService {
@@ -106,7 +134,7 @@ impl Service<DeleteTag> for RpcService {
                             let _peer_id = peer_id;
                             //[TODO] Remote Request
                             // Relay the request via the peer service
-                                // Await for the response to be inserted into the relay_responses map
+                            // Await for the response to be inserted into the relay_responses map
                             // Handle the responses
                         }
                     }
@@ -134,7 +162,7 @@ impl Service<DeleteTag> for RpcService {
                 _ => 0,
             };
             let metadata = ResponseMetadata {
-                request_id: metadata.request_id,
+                request_uuid: metadata.request_uuid,
                 return_code,
                 error_data,
             };
@@ -176,7 +204,7 @@ impl Service<StripTag> for RpcService {
                 .unwrap_or(false);
 
             let return_code = match (tag_found, workspace_found, local_shelf_found) {
-                (_, false, _) => 1, // Workspace not Found
+                (_, false, _) => 1,    // Workspace not Found
                 (false, true, _) => 2, // Tag not Found
                 (true, true, false) => {
                     let workspace = workspaces.read().await;
@@ -185,8 +213,8 @@ impl Service<StripTag> for RpcService {
                     if let Some((_, peer_id)) = remote_shelf {
                         //[TODO] Remote Request
                         // Relay the request via the peer service
-                            // Await for the response to be inserted into the relay_responses map
-                            // Timeout?
+                        // Await for the response to be inserted into the relay_responses map
+                        // Timeout?
                         let _peer_id = peer_id;
                         let _relay_response = StripTagResponse { metadata: None };
                         //return_code = relay_response.metadata.return_code;
@@ -214,7 +242,7 @@ impl Service<StripTag> for RpcService {
                         Ok(_) => 0,
                         Err(UpdateErr::PathNotDir) => 4, // Path not a Directory
                         Err(UpdateErr::PathNotFound) => 5, // Path not Found
-                        Err(UpdateErr::FileNotFound) => 6 // "Nothing ever happens" -Chudda
+                        Err(UpdateErr::FileNotFound) => 6, // "Nothing ever happens" -Chudda
                     }
                 }
             };
@@ -230,7 +258,7 @@ impl Service<StripTag> for RpcService {
             };
 
             let metadata = ResponseMetadata {
-                request_id: metadata.request_id,
+                request_uuid: metadata.request_uuid,
                 return_code,
                 error_data,
             };
@@ -325,7 +353,7 @@ impl Service<DetachTag> for RpcService {
                         Ok(false) => 6,                    // File not tagged
                         Err(UpdateErr::FileNotFound) => 5, // File not found
                         Err(UpdateErr::PathNotFound) => 4, // Path not found
-                        Err(UpdateErr::PathNotDir) => 6  // "Nothing ever happens" -Chudda
+                        Err(UpdateErr::PathNotDir) => 6,   // "Nothing ever happens" -Chudda
                     }
                 }
             };
@@ -341,7 +369,7 @@ impl Service<DetachTag> for RpcService {
             };
 
             let metadata = ResponseMetadata {
-                request_id: metadata.request_id,
+                request_uuid: metadata.request_uuid,
                 return_code,
                 error_data,
             };
@@ -393,8 +421,8 @@ impl Service<AttachTag> for RpcService {
                     if let Some((_, _peer_id)) = remote_shelf {
                         //[TODO] Remote Request
                         // Relay the request via the peer service
-                            // Await for the response to be inserted into the relay_responses map
-                            // Timeout?
+                        // Await for the response to be inserted into the relay_responses map
+                        // Timeout?
                         let _relay_response = AttachTagResponse { metadata: None };
                         0 // Success
                     } else {
@@ -430,7 +458,7 @@ impl Service<AttachTag> for RpcService {
                         Ok(false) => 6,                    // Already tagged
                         Err(UpdateErr::FileNotFound) => 5, // File not found
                         Err(UpdateErr::PathNotFound) => 4, // Path not found
-                        Err(UpdateErr::PathNotDir) => 7 // "Nothing ever happens" -Chudda
+                        Err(UpdateErr::PathNotDir) => 7,   // "Nothing ever happens" -Chudda
                     }
                 }
             };
@@ -445,7 +473,7 @@ impl Service<AttachTag> for RpcService {
                 });
             }
             let metadata = ResponseMetadata {
-                request_id: metadata.request_id,
+                request_uuid: metadata.request_uuid,
                 return_code,
                 error_data,
             };
@@ -532,7 +560,7 @@ impl Service<RemoveShelf> for RpcService {
             }
 
             let metadata = ResponseMetadata {
-                request_id: metadata.request_id,
+                request_uuid: metadata.request_uuid,
                 return_code,
                 error_data,
             };
@@ -610,7 +638,7 @@ impl Service<EditShelf> for RpcService {
                 });
             }
             let metadata = ResponseMetadata {
-                request_id: metadata.request_id,
+                request_uuid: metadata.request_uuid,
                 return_code,
                 error_data,
             };
@@ -632,27 +660,31 @@ impl Service<AddShelf> for RpcService {
 
     fn call(&mut self, req: AddShelf) -> Self::Future {
         let workspaces = self.workspaces.clone();
-        let metadata = req.metadata.unwrap();
+        let metadata = req.metadata.clone();
+        let metadata = metadata.unwrap();
         let shelf_manager = self.shelf_manager.clone();
         let notify_queue = self.notify_queue.clone();
         let daemon_info = self.daemon_info.clone();
+        let mut peer_service = self.peer_service.clone();
+
+        let peer_id = parse_peer_id(req.peer_id.as_slice());
         Box::pin(async move {
             let mut error_data: Option<ErrorData> = None;
             let mut shelf_id: Option<u64> = None;
 
-            let peer_id = parse_peer_id(req.peer_id.as_slice());
             let workspace_found = workspaces.read().await.contains_key(&req.workspace_id);
 
             let return_code = match (workspace_found, peer_id) {
                 (false, _) => 2,
                 (true, Err(_)) => 1,
                 (true, Ok(peer_id)) if peer_id != daemon_info.id => {
-                    //[TODO] Remote Request
-                    let _relay_response = AddShelfResponse {
-                        shelf_id: None,
-                        metadata: None,
-                    };
-                    0
+                    match peer_service
+                        .call((peer_id, Request::from(req.clone())))
+                        .await
+                    {
+                        Ok(res) => res.metadata().unwrap().return_code,
+                        Err(_) => 7, // [!] Unknown error, expand with errors from peer service
+                    }
                 }
                 (true, Ok(_)) => {
                     let path = PathBuf::from(req.path.clone());
@@ -693,7 +725,7 @@ impl Service<AddShelf> for RpcService {
                 });
             }
             let metadata = ResponseMetadata {
-                request_id: metadata.request_id,
+                request_uuid: metadata.request_uuid,
                 return_code,
                 error_data,
             };
@@ -766,7 +798,7 @@ impl Service<DeleteWorkspace> for RpcService {
                 });
             }
             let metadata = ResponseMetadata {
-                request_id: metadata.request_id,
+                request_uuid: metadata.request_uuid,
                 return_code,
                 error_data: None,
             };
@@ -856,7 +888,7 @@ impl Service<EditTag> for RpcService {
             }
 
             let metadata = ResponseMetadata {
-                request_id: metadata.request_id,
+                request_uuid: metadata.request_uuid,
                 return_code,
                 error_data: None,
             };
@@ -906,7 +938,7 @@ impl Service<EditWorkspace> for RpcService {
             }
 
             let metadata = ResponseMetadata {
-                request_id: metadata.request_id,
+                request_uuid: metadata.request_uuid,
                 return_code,
                 error_data: None,
             };
@@ -952,7 +984,7 @@ impl Service<GetShelves> for RpcService {
                 }
             }
             let metadata = ResponseMetadata {
-                request_id: metadata.request_id,
+                request_uuid: metadata.request_uuid,
                 return_code: 0,
                 error_data: None,
             };
@@ -997,7 +1029,7 @@ impl Service<GetWorkspaces> for RpcService {
                         parent_id,
                     });
                 }
-                let ws = crate::rpc::Workspace {
+                let ws = ebi_proto::rpc::Workspace {
                     workspace_id: workspace.id,
                     name: workspace.name.clone(),
                     description: workspace.description.clone(),
@@ -1007,7 +1039,7 @@ impl Service<GetWorkspaces> for RpcService {
             }
 
             let metadata = ResponseMetadata {
-                request_id: metadata.request_id,
+                request_uuid: metadata.request_uuid,
                 return_code: 0,
                 error_data: None,
             };
@@ -1059,7 +1091,7 @@ impl Service<CreateWorkspace> for RpcService {
             workspaces.write().await.insert(id, workspace);
 
             let metadata = ResponseMetadata {
-                request_id: metadata.request_id,
+                request_uuid: metadata.request_uuid,
                 return_code: 0,
                 error_data: None,
             };
@@ -1112,7 +1144,7 @@ impl Service<CreateTag> for RpcService {
                         });
                         // If the tag was created successfully, return the response with the tag ID
                         let metadata = ResponseMetadata {
-                            request_id: metadata.request_id,
+                            request_uuid: metadata.request_uuid,
                             return_code: 0, // Success
                             error_data: None,
                         };
@@ -1124,7 +1156,7 @@ impl Service<CreateTag> for RpcService {
                     Err(_) => {
                         // If there was an error creating the tag, return an error response
                         let metadata = ResponseMetadata {
-                            request_id: metadata.request_id,
+                            request_uuid: metadata.request_uuid,
                             return_code: 2, // Requested parent does not exist
                             error_data: None,
                         };
@@ -1136,7 +1168,7 @@ impl Service<CreateTag> for RpcService {
                 }
             } else {
                 let metadata = ResponseMetadata {
-                    request_id: metadata.request_id,
+                    request_uuid: metadata.request_uuid,
                     return_code: 1, // Workspace not found
                     error_data: None,
                 };

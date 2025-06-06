@@ -2,10 +2,10 @@ use crate::shelf::node::Node;
 use crate::tag::TagRef;
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsStr;
+use std::io;
 use std::path::PathBuf;
 use std::result::Result;
 use std::sync::Arc;
-use std::io;
 use tokio::sync::RwLock;
 
 use super::file::FileRef;
@@ -413,7 +413,7 @@ impl Shelf {
         let mut curr_node = &mut self.root;
 
         if !path.is_dir() {
-            return Err(UpdateErr::PathNotDir)
+            return Err(UpdateErr::PathNotDir);
         }
 
         for dir in path.components() {
@@ -446,5 +446,5 @@ impl Shelf {
 pub enum UpdateErr {
     PathNotFound,
     FileNotFound,
-    PathNotDir
+    PathNotDir,
 }
