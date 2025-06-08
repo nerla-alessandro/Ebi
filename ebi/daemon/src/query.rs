@@ -1,7 +1,8 @@
 use iroh::NodeId;
 
 use crate::shelf::file::FileMetadata;
-use crate::tag::{TagErr, TagManager};
+use crate::tag::{TagErr, TagId, TagManager};
+use crate::workspace::WorkspaceId;
 use std::collections::{BTreeSet, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -67,7 +68,7 @@ peg::parser! {
                 "NOT" _ x:@ { Ok(Formula::UnaryExpression((UnaryOp::NOT), (Box::new(x?)))) }
                 --
                 t:term() {
-                    Ok(Formula::Proposition(Proposition { tag_id: t.parse::<u64>().map_err(|_| QueryErr::ParseError)? }))
+                    Ok(Formula::Proposition(Proposition { tag_id: t.parse::<TagId>().map_err(|_| QueryErr::ParseError)? }))
                 }
                 --
                 "(" _ e:expression() _ ")" { e }
@@ -88,13 +89,13 @@ enum Formula {
 }
 
 impl Formula {
-    fn get_tags(&self) -> HashSet<u64> {
+    fn get_tags(&self) -> HashSet<TagId> {
         match self {
             Formula::BinaryExpression(_, x, y) => x
                 .get_tags()
                 .union(&y.get_tags())
                 .cloned()
-                .collect::<HashSet<u64>>(),
+                .collect::<HashSet<TagId>>(),
             Formula::UnaryExpression(_, x) => x.get_tags(),
             Formula::Proposition(p) => HashSet::from([p.tag_id.clone()]),
         }
@@ -114,7 +115,7 @@ enum UnaryOp {
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 struct Proposition {
-    tag_id: u64,
+    tag_id: TagId,
 }
 
 #[derive(Debug, Clone)]
@@ -312,14 +313,14 @@ impl<T: FileOrder + Clone> Query<T> {
         Ok(query)
     }
 
-    pub fn get_tags(&self) -> HashSet<u64> {
+    pub fn get_tags(&self) -> HashSet<TagId> {
         self.formula.get_tags()
     }
 
     //[!] Should be executed inside the QueryService
     pub fn validate<R>(
         &mut self,
-        workspace_id: u64,
+        workspace_id: WorkspaceId,
         tag_manager: Arc<RwLock<TagManager>>,
     ) -> Result<(), TagErr> {
         let tag_set = self.formula.get_tags();
@@ -328,7 +329,7 @@ impl<T: FileOrder + Clone> Query<T> {
 
     pub async fn evaluate<R>(
         &mut self,
-        workspace_id: u64,
+        workspace_id: WorkspaceId,
         ret_service: R,
     ) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr>
     where
@@ -340,7 +341,7 @@ impl<T: FileOrder + Clone> Query<T> {
 
     async fn recursive_evaluate<R>(
         formula: Formula,
-        workspace_id: u64,
+        workspace_id: WorkspaceId,
         ret_service: R,
     ) -> Result<BTreeSet<OrderedFileID<T>>, QueryErr>
     where
@@ -404,7 +405,7 @@ impl<T: FileOrder + Clone> Query<T> {
                 Ok(x)
             }
             Formula::Proposition(p) => ret_service
-                .get_files((p.tag_id, workspace_id))
+                .get_files(p.tag_id, workspace_id)
                 .await
                 .map_err(|err| QueryErr::RuntimeError(err)),
         }
@@ -565,7 +566,7 @@ impl Formula {
 // TODO: define appropriate errors, include I/O, etc.
 pub enum QueryErr {
     SyntaxError,               // The Query is incorrectly formatted
-    ParseError,                // A Tag_ID is not a valid u64
+    ParseError,                // A Tag_ID is not a valid UUID
     KeyError(TagErr),          // The Query uses tags which do not exist
     RuntimeError(RetrieveErr), // The Query could not be executed
 }
@@ -579,7 +580,8 @@ pub enum RetrieveErr {
 pub trait RetrieveService {
     async fn get_files<T: FileOrder>(
         &self,
-        _uuid: (u64, u64),
+        _tag_id: TagId,
+        _workspace_id: WorkspaceId,
     ) -> Result<BTreeSet<OrderedFileID<T>>, RetrieveErr> {
         todo!();
     }

@@ -1,19 +1,22 @@
-use crate::shelf::shelf::ShelfInfo;
+use crate::shelf::shelf::{ShelfId, ShelfInfo};
 use iroh::NodeId;
 use std::collections::HashMap;
+use uuid::Uuid;
+
+pub type WorkspaceId = Uuid;
 
 pub struct Workspace {
     pub id: WorkspaceId,
     pub name: String,
     pub description: String,
-    pub local_shelves: HashMap<u64, ShelfInfo>,
-    pub remote_shelves: HashMap<u64, (ShelfInfo, NodeId)>,
+    pub local_shelves: HashMap<ShelfId, ShelfInfo>,
+    pub remote_shelves: HashMap<ShelfId, (ShelfInfo, NodeId)>,
 }
 
 impl Workspace {
     pub fn edit_shelf(
         &mut self,
-        shelf_id: u64,
+        shelf_id: ShelfId,
         new_name: Option<String>,
         new_description: Option<String>,
     ) -> bool {
@@ -37,6 +40,10 @@ impl Workspace {
         }
         false
     }
-}
 
-pub type WorkspaceId = u64;
+    pub fn contains(&self, shelf_id: ShelfId) -> (bool, bool) {
+        let remote = self.remote_shelves.contains_key(&shelf_id);
+        let exists = self.local_shelves.contains_key(&shelf_id) || remote;
+        return (exists, remote);
+    }
+}

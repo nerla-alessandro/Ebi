@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use crate::services::peer::{Client, Peer, PeerService};
-use crate::services::rpc::{DaemonInfo, RpcService, TaskID};
+use crate::services::rpc::{DaemonInfo, RequestId, RpcService, TaskID};
 use anyhow::Result;
 use ebi_proto::rpc::*;
 use iroh::{Endpoint, NodeId, SecretKey};
@@ -105,10 +105,10 @@ async fn main() -> Result<()> {
         workspace::WorkspaceId,
         workspace::Workspace,
     >::new()));
-    let responses = Arc::new(RwLock::new(HashMap::<Uuid, Response>::new()));
+    let responses = Arc::new(RwLock::new(HashMap::<RequestId, Response>::new()));
     let notify_queue = Arc::new(RwLock::new(VecDeque::new()));
     let id: NodeId = ep.node_id();
-    let (broadcast, watcher) = watch::channel::<Uuid>(Uuid::now_v7());
+    let (broadcast, watcher) = watch::channel::<RequestId>(Uuid::now_v7());
     //[/] The Peer service subscribes to the ResponseHandler when a request is sent.
     //[/] It is then notified when a response is received so it can acquire the read lock on the Response map.
 
@@ -126,7 +126,7 @@ async fn main() -> Result<()> {
         shelf_manager: shelf_manager.clone(),
         workspaces: workspaces.clone(),
         broadcast: broadcast.clone(),
-        watcher: watcher.clone()
+        watcher: watcher.clone(),
     });
     loop {
         tokio::select! {
