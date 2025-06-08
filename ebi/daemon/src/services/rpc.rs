@@ -11,8 +11,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::RwLock;
-use tokio::sync::watch::{Receiver, Sender};
 use tokio::task::JoinHandle;
+use tokio::sync::watch::{Sender, Receiver};
 use tower::Service;
 use uuid::Uuid;
 
@@ -31,7 +31,7 @@ pub struct RpcService {
     pub responses: Arc<RwLock<HashMap<RequestId, Response>>>,
     pub notify_queue: Arc<RwLock<VecDeque<Notification>>>,
     pub broadcast: Sender<Uuid>,
-    pub watcher: Receiver<Uuid>,
+    pub watcher: Receiver<Uuid>
 }
 pub type TaskID = u64;
 
@@ -61,7 +61,7 @@ fn parse_peer_id(bytes: &[u8]) -> Result<NodeId, ()> {
 }
 
 enum UuidErr {
-    SizeMismatch,
+    SizeMismatch
 }
 
 fn uuid(bytes: Vec<u8>) -> Result<Uuid, UuidErr> {
@@ -116,8 +116,8 @@ impl Service<DeleteTag> for RpcService {
             let tag_id: Option<TagId>;
             let workspace_id: Option<WorkspaceId>;
 
-            //[TODO] Macro for uuid unwrap from bytes & validation
-            //[/] Workspace ID unwrap & validation
+            //[TODO] Macro for uuid unwrap from bytes & validation 
+            //[/] Workspace ID unwrap & validation 
             if let Ok(id) = uuid(req.workspace_id) {
                 if workspaces.read().await.contains_key(&id) {
                     workspace_id = Some(id);
@@ -129,52 +129,50 @@ impl Service<DeleteTag> for RpcService {
             }
 
             if workspace_id.is_none() {
-                let return_code = 2; // Workspace does not exist 
+                let return_code = ReturnCode::WorkspaceNotFound; // Workspace does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(DeleteTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let workspace_id = workspace_id.unwrap();
-
-            //[/] Tag ID unwrap & validation
+            
+            //[/] Tag ID unwrap & validation 
             if let Ok(id) = uuid(req.tag_id) {
-                if tag_manager
-                    .read()
-                    .await
-                    .tags
-                    .contains_key(&(id, workspace_id))
-                {
+                if tag_manager.read().await.tags.contains_key(&(id, workspace_id)) {
                     tag_id = Some(id);
                 } else {
                     tag_id = None;
                 }
             } else {
-                tag_id = None;
+                tag_id =  None;
             }
 
             if tag_id.is_none() {
-                let return_code = 1; // Tag does not exist 
+                let return_code = ReturnCode::TagNotFound; // Tag does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(DeleteTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let tag_id = tag_id.unwrap();
 
-            //[/] Business Logic
+            //[/] Business Logic 
             {
                 let tag_manager_r = tag_manager.read().await;
                 let workspaces_r = workspaces.read().await;
-                let tag = tag_manager_r.tags.get(&(tag_id, workspace_id)).unwrap();
+                let tag = tag_manager_r
+                    .tags
+                    .get(&(tag_id, workspace_id))
+                    .unwrap();
                 let workspace = workspaces_r.get(&workspace_id).unwrap();
                 for (_, shelf_info) in workspace.local_shelves.iter() {
                     let shelf_manager_r = shelf_manager.read().await;
@@ -200,7 +198,9 @@ impl Service<DeleteTag> for RpcService {
                 .write()
                 .await
                 .tags
-                .retain(|id, _| !(id == &(tag_id, workspace_id)));
+                .retain(|id, _| {
+                    !(id == &(tag_id, workspace_id))
+                });
 
             notify_queue.write().await.push_back({
                 Notification::Operation(Operation {
@@ -212,7 +212,7 @@ impl Service<DeleteTag> for RpcService {
 
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
-                return_code: 0,
+                return_code: ReturnCode::Success as u32,
                 error_data,
             };
             Ok(DeleteTagResponse {
@@ -241,13 +241,13 @@ impl Service<StripTag> for RpcService {
         Box::pin(async move {
             let error_data: Option<ErrorData> = None;
 
-            //[TODO] Macro for uuid unwrap from bytes & validation
+            //[TODO] Macro for uuid unwrap from bytes & validation 
             let tag_id: Option<TagId>;
             let workspace_id: Option<WorkspaceId>;
             let shelf_id: Option<ShelfId>;
             let mut remote: bool = false;
 
-            //[/] Workspace ID unwrap & validation
+            //[/] Workspace ID unwrap & validation 
             if let Ok(id) = uuid(req.workspace_id.clone()) {
                 if workspaces.read().await.contains_key(&id) {
                     workspace_id = Some(id);
@@ -259,52 +259,46 @@ impl Service<StripTag> for RpcService {
             }
 
             if workspace_id.is_none() {
-                let return_code = 2; // Workspace does not exist 
+                let return_code = ReturnCode::WorkspaceNotFound; // Workspace does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(StripTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let workspace_id = workspace_id.unwrap();
-
-            //[/] Tag ID unwrap & validation
+            
+            //[/] Tag ID unwrap & validation 
             if let Ok(id) = uuid(req.tag_id.clone()) {
-                if tag_manager
-                    .read()
-                    .await
-                    .tags
-                    .contains_key(&(id, workspace_id))
-                {
+                if tag_manager.read().await.tags.contains_key(&(id, workspace_id)) {
                     tag_id = Some(id);
                 } else {
                     tag_id = None;
                 }
             } else {
-                tag_id = None;
+                tag_id =  None;
             }
 
             if tag_id.is_none() {
-                let return_code = 1; // Tag does not exist 
+                let return_code = ReturnCode::TagNotFound; // Tag does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(StripTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let tag_id = tag_id.unwrap();
 
-            //[/] Shelf ID unwrap & validation
-            if let Ok(id) = uuid(req.shelf_id.clone()) {
+            //[/] Shelf ID unwrap & validation 
+            if let Ok(id) = uuid(req.shelf_id.clone()) {            
                 let workspace_r = workspaces.read().await;
-                let (shelf_exists, is_remote) =
-                    workspace_r.get(&workspace_id).unwrap().contains(id); //Workspace ID already validated
+                let (shelf_exists, is_remote) = workspace_r.get(&workspace_id).unwrap().contains(id);  //Workspace ID already validated
                 if shelf_exists {
                     shelf_id = Some(id);
                     remote = is_remote;
@@ -316,39 +310,41 @@ impl Service<StripTag> for RpcService {
             }
 
             if shelf_id.is_none() {
-                let return_code = 3; // Shelf does not exist 
+                let return_code = ReturnCode::ShelfNotFound; // Shelf does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(StripTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let shelf_id = shelf_id.unwrap();
 
-            //[/] Business Logic
+            //[/] Business Logic 
             let return_code = {
                 if remote {
                     let workspace = workspaces.read().await;
                     let workspace = workspace.get(&workspace_id).unwrap();
                     let remote_shelf = workspace.remote_shelves.get(&shelf_id);
                     if let Some((_, peer_id)) = remote_shelf {
-                        //[TODO] Remote Request
-                        // Relay the request via the peer service
-                        // Await for the response to be inserted into the relay_responses map
-                        // Timeout?
-                        match peer_service.call((*peer_id, Request::from(req))).await {
-                            Ok(res) => res.metadata().unwrap().return_code,
-                            Err(_) => 8, // [!] Unknown error, expand with errors from peer service
+                        match peer_service
+                        .call((*peer_id, Request::from(req)))
+                        .await
+                        {
+                            Ok(res) => parse_code(res.metadata().unwrap().return_code),
+                            Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service 
                         }
                     } else {
-                        3 // Shelf not Found
+                        ReturnCode::ShelfNotFound // Shelf not Found
                     }
                 } else {
                     let tag_manager_w = tag_manager.write().await;
-                    let tag_ref = tag_manager_w.tags.get(&(tag_id, workspace_id)).unwrap();
+                    let tag_ref = tag_manager_w
+                        .tags
+                        .get(&(tag_id, workspace_id))
+                        .unwrap();
                     // we can unwrap because we checked that the shelf existed
                     let shelf_manager_r = shelf_manager.read().await;
                     let mut shelf = shelf_manager_r
@@ -359,15 +355,16 @@ impl Service<StripTag> for RpcService {
                         .await;
                     let path = PathBuf::from(req.path);
                     match shelf.strip(path, tag_ref.clone()) {
-                        Ok(_) => 0,
-                        Err(UpdateErr::PathNotDir) => 4, // Path not a Directory
-                        Err(UpdateErr::PathNotFound) => 5, // Path not Found
-                        Err(UpdateErr::FileNotFound) => 6, // "Nothing ever happens" -Chudda
+                        Ok(_) => ReturnCode::Success,
+                        Err(UpdateErr::PathNotDir) =>  ReturnCode::PathNotDir, // Path not a Directory
+                        Err(UpdateErr::PathNotFound) => ReturnCode::PathNotFound, // Path not Found
+                        Err(UpdateErr::FileNotFound) => ReturnCode::FileNotFound, // "Nothing ever happens" -Chudda
                     }
                 }
             };
 
-            if return_code == 0 {
+
+            if return_code == ReturnCode::Success {
                 notify_queue.write().await.push_back({
                     Notification::Operation(Operation {
                         target: ActionTarget::Shelf.into(),
@@ -379,7 +376,7 @@ impl Service<StripTag> for RpcService {
 
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
-                return_code,
+                return_code: return_code as u32,
                 error_data,
             };
             Ok(StripTagResponse {
@@ -413,8 +410,8 @@ impl Service<DetachTag> for RpcService {
             let shelf_id: Option<ShelfId>;
             let mut remote: bool = false;
 
-            //[TODO] Macro for uuid unwrap from bytes & validation
-            //[/] Workspace ID unwrap & validation
+            //[TODO] Macro for uuid unwrap from bytes & validation 
+            //[/] Workspace ID unwrap & validation 
             if let Ok(id) = uuid(req.workspace_id.clone()) {
                 if workspaces.read().await.contains_key(&id) {
                     workspace_id = Some(id);
@@ -426,52 +423,46 @@ impl Service<DetachTag> for RpcService {
             }
 
             if workspace_id.is_none() {
-                let return_code = 2; // Workspace does not exist 
+                let return_code = ReturnCode::WorkspaceNotFound; // Workspace does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(DetachTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let workspace_id = workspace_id.unwrap();
-
-            //[/] Tag ID unwrap & validation
+            
+            //[/] Tag ID unwrap & validation 
             if let Ok(id) = uuid(req.tag_id.clone()) {
-                if tag_manager
-                    .read()
-                    .await
-                    .tags
-                    .contains_key(&(id, workspace_id))
-                {
+                if tag_manager.read().await.tags.contains_key(&(id, workspace_id)) {
                     tag_id = Some(id);
                 } else {
                     tag_id = None;
                 }
             } else {
-                tag_id = None;
+                tag_id =  None;
             }
 
             if tag_id.is_none() {
-                let return_code = 1; // Tag does not exist 
+                let return_code = ReturnCode::TagNotFound; // Tag does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(DetachTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let tag_id = tag_id.unwrap();
 
-            //[/] Shelf ID unwrap & validation
-            if let Ok(id) = uuid(req.shelf_id.clone()) {
+            //[/] Shelf ID unwrap & validation 
+            if let Ok(id) = uuid(req.shelf_id.clone()) {            
                 let workspace_r = workspaces.read().await;
-                let (shelf_exists, is_remote) =
-                    workspace_r.get(&workspace_id).unwrap().contains(id); //Workspace ID already validated
+                let (shelf_exists, is_remote) = workspace_r.get(&workspace_id).unwrap().contains(id);  //Workspace ID already validated
                 if shelf_exists {
                     shelf_id = Some(id);
                     remote = is_remote;
@@ -483,15 +474,15 @@ impl Service<DetachTag> for RpcService {
             }
 
             if shelf_id.is_none() {
-                let return_code = 3; // Shelf does not exist 
+                let return_code = ReturnCode::ShelfNotFound; // Shelf does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(DetachTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let shelf_id = shelf_id.unwrap();
 
@@ -502,45 +493,49 @@ impl Service<DetachTag> for RpcService {
                     let workspace = workspace_r.get(&workspace_id).unwrap();
                     let remote_shelf = workspace.remote_shelves.get(&shelf_id);
                     let (_, peer_id) = remote_shelf.unwrap(); // Already validated  
-                    match peer_service.call((*peer_id, Request::from(req))).await {
-                        Ok(res) => res.metadata().unwrap().return_code,
-                        Err(_) => 8, // [!] Unknown error, expand with errors from peer service
+                    match peer_service
+                    .call((*peer_id, Request::from(req)))
+                    .await
+                    {
+                        Ok(res) => parse_code(res.metadata().unwrap().return_code),
+                        Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service 
                     }
                 } else {
                     let tag_ref = tag_manager
-                        .write()
-                        .await
-                        .tags
-                        .get(&(tag_id, workspace_id))
-                        .unwrap()
-                        .clone();
+                            .write()
+                            .await
+                            .tags
+                            .get(&(tag_id, workspace_id))
+                            .unwrap()
+                            .clone();
 
                     let shelf_manager_r = shelf_manager.read().await;
                     let mut shelf = shelf_manager_r
-                        .shelves
-                        .get(&shelf_id)
-                        .unwrap()
-                        .write()
-                        .await;
+                            .shelves
+                            .get(&shelf_id)
+                            .unwrap()
+                            .write()
+                            .await;
 
                     let path = PathBuf::from(&req.path);
                     let result = if path.is_file() {
-                        shelf.detach(path, tag_ref)
+                            shelf.detach(path, tag_ref)
                     } else {
-                        shelf.detach_dtag(path, tag_ref)
+                            shelf.detach_dtag(path, tag_ref)
                     };
 
                     match result {
-                        Ok(true) => 0,                     // Success
-                        Ok(false) => 6,                    // File not tagged
-                        Err(UpdateErr::FileNotFound) => 5, // File not found
-                        Err(UpdateErr::PathNotFound) => 4, // Path not found
-                        Err(UpdateErr::PathNotDir) => 7,   // "Nothing ever happens" -Chudda
+                            Ok(true) => ReturnCode::Success,                     // Success
+                            Ok(false) => ReturnCode::NotTagged,                    // File not tagged
+                            Err(UpdateErr::PathNotFound) => ReturnCode::PathNotFound, // Path not found
+                            Err(UpdateErr::FileNotFound) => ReturnCode::FileNotFound, // File not found
+                            Err(UpdateErr::PathNotDir) =>  ReturnCode::PathNotDir,   // "Nothing ever happens" -Chudda
                     }
                 }
+                        
             };
 
-            if return_code == 0 {
+            if return_code == ReturnCode::Success {
                 notify_queue.write().await.push_back({
                     Notification::Operation(Operation {
                         target: ActionTarget::Shelf.into(),
@@ -552,7 +547,7 @@ impl Service<DetachTag> for RpcService {
 
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
-                return_code,
+                return_code: return_code as u32,
                 error_data,
             };
             Ok(DetachTagResponse {
@@ -586,8 +581,8 @@ impl Service<AttachTag> for RpcService {
             let shelf_id: Option<ShelfId>;
             let mut remote: bool = false;
 
-            //[TODO] Macro for uuid unwrap from bytes & validation
-            //[/] Workspace ID unwrap & validation
+            //[TODO] Macro for uuid unwrap from bytes & validation 
+            //[/] Workspace ID unwrap & validation 
             if let Ok(id) = uuid(req.workspace_id.clone()) {
                 if workspaces.read().await.contains_key(&id) {
                     workspace_id = Some(id);
@@ -599,36 +594,31 @@ impl Service<AttachTag> for RpcService {
             }
 
             if workspace_id.is_none() {
-                let return_code = 2; // Workspace does not exist 
+                let return_code = ReturnCode::WorkspaceNotFound; // Workspace does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(AttachTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let workspace_id = workspace_id.unwrap();
-
-            //[/] Tag ID unwrap & validation
+            
+            //[/] Tag ID unwrap & validation 
             if let Ok(id) = uuid(req.tag_id.clone()) {
-                if tag_manager
-                    .read()
-                    .await
-                    .tags
-                    .contains_key(&(id, workspace_id))
-                {
+                if tag_manager.read().await.tags.contains_key(&(id, workspace_id)) {
                     tag_id = Some(id);
                 } else {
                     tag_id = None;
                 }
             } else {
-                tag_id = None;
+                tag_id =  None;
             }
 
             if tag_id.is_none() {
-                let return_code = 1; // Tag does not exist 
+                let return_code = 2; // Tag does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
                     return_code,
@@ -636,15 +626,14 @@ impl Service<AttachTag> for RpcService {
                 };
                 return Ok(AttachTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let tag_id = tag_id.unwrap();
 
-            //[/] Shelf ID unwrap & validation
-            if let Ok(id) = uuid(req.shelf_id.clone()) {
+            //[/] Shelf ID unwrap & validation 
+            if let Ok(id) = uuid(req.shelf_id.clone()) {            
                 let workspace_r = workspaces.read().await;
-                let (shelf_exists, is_remote) =
-                    workspace_r.get(&workspace_id).unwrap().contains(id); //Workspace ID already validated
+                let (shelf_exists, is_remote) = workspace_r.get(&workspace_id).unwrap().contains(id);  //Workspace ID already validated
                 if shelf_exists {
                     shelf_id = Some(id);
                     remote = is_remote;
@@ -656,15 +645,15 @@ impl Service<AttachTag> for RpcService {
             }
 
             if shelf_id.is_none() {
-                let return_code = 3; // Shelf does not exist 
+                let return_code = ReturnCode::ShelfNotFound; // Shelf does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(AttachTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let shelf_id = shelf_id.unwrap();
 
@@ -675,9 +664,12 @@ impl Service<AttachTag> for RpcService {
                     let workspace = workspace_r.get(&workspace_id).unwrap();
                     let remote_shelf = workspace.remote_shelves.get(&shelf_id);
                     let (_, peer_id) = remote_shelf.unwrap(); // Already validated  
-                    match peer_service.call((*peer_id, Request::from(req))).await {
-                        Ok(res) => res.metadata().unwrap().return_code,
-                        Err(_) => 8, // [!] Unknown error, expand with errors from peer service
+                    match peer_service
+                        .call((*peer_id, Request::from(req)))
+                        .await
+                    {
+                        Ok(res) => parse_code(res.metadata().unwrap().return_code),
+                        Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service 
                     }
                 } else {
                     let tag_ref = tag_manager
@@ -698,22 +690,23 @@ impl Service<AttachTag> for RpcService {
 
                     let path = PathBuf::from(&req.path);
                     let result = if path.is_file() {
-                        shelf.attach(path, tag_ref)
+                            shelf.attach(path, tag_ref)
                     } else {
-                        shelf.attach_dtag(path, tag_ref)
+                            shelf.attach_dtag(path, tag_ref)
                     };
 
                     match result {
-                        Ok(true) => 0,                     // Success
-                        Ok(false) => 6,                    // File already tagged
-                        Err(UpdateErr::FileNotFound) => 5, // File not found
-                        Err(UpdateErr::PathNotFound) => 4, // Path not found
-                        Err(UpdateErr::PathNotDir) => 7,   // "Nothing ever happens" -Chudda
+                            Ok(true) => ReturnCode::Success,                     // Success
+                            Ok(false) => ReturnCode::TagAlreadyAttached,                    // File already tagged
+                            Err(UpdateErr::PathNotFound) => ReturnCode::PathNotFound, // Path not found
+                            Err(UpdateErr::FileNotFound) => ReturnCode::FileNotFound, // File not found
+                            Err(UpdateErr::PathNotDir) =>  ReturnCode::PathNotDir,   // "Nothing ever happens" -Chudda
                     }
                 }
+                        
             };
 
-            if return_code == 0 {
+            if return_code == ReturnCode::Success {
                 notify_queue.write().await.push_back({
                     Notification::Operation(Operation {
                         target: ActionTarget::Shelf.into(),
@@ -725,7 +718,7 @@ impl Service<AttachTag> for RpcService {
 
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
-                return_code,
+                return_code: return_code as u32,
                 error_data,
             };
             Ok(AttachTagResponse {
@@ -757,8 +750,8 @@ impl Service<RemoveShelf> for RpcService {
             let shelf_id: Option<ShelfId>;
             let mut remote: bool = false;
 
-            //[TODO] Macro for uuid unwrap from bytes & validation
-            //[/] Workspace ID unwrap & validation
+            //[TODO] Macro for uuid unwrap from bytes & validation 
+            //[/] Workspace ID unwrap & validation 
             if let Ok(id) = uuid(req.workspace_id.clone()) {
                 if workspaces.read().await.contains_key(&id) {
                     workspace_id = Some(id);
@@ -770,23 +763,22 @@ impl Service<RemoveShelf> for RpcService {
             }
 
             if workspace_id.is_none() {
-                let return_code = 2; // Workspace does not exist 
+                let return_code = ReturnCode::WorkspaceNotFound; // Workspace does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(RemoveShelfResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let workspace_id = workspace_id.unwrap();
 
-            //[/] Shelf ID unwrap & validation
-            if let Ok(id) = uuid(req.shelf_id.clone()) {
+            //[/] Shelf ID unwrap & validation 
+            if let Ok(id) = uuid(req.shelf_id.clone()) {            
                 let workspace_r = workspaces.read().await;
-                let (shelf_exists, is_remote) =
-                    workspace_r.get(&workspace_id).unwrap().contains(id); //Workspace ID already validated
+                let (shelf_exists, is_remote) = workspace_r.get(&workspace_id).unwrap().contains(id);  //Workspace ID already validated
                 if shelf_exists {
                     shelf_id = Some(id);
                     remote = is_remote;
@@ -798,15 +790,15 @@ impl Service<RemoveShelf> for RpcService {
             }
 
             if shelf_id.is_none() {
-                let return_code = 3; // Shelf does not exist 
+                let return_code = ReturnCode::ShelfNotFound; // Shelf does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(RemoveShelfResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let shelf_id = shelf_id.unwrap();
 
@@ -817,9 +809,12 @@ impl Service<RemoveShelf> for RpcService {
                     let workspace = workspace_r.get(&workspace_id).unwrap();
                     let remote_shelf = workspace.remote_shelves.get(&shelf_id);
                     let (_, peer_id) = remote_shelf.unwrap(); // Already validated  
-                    match peer_service.call((*peer_id, Request::from(req))).await {
-                        Ok(res) => res.metadata().unwrap().return_code,
-                        Err(_) => 8, // [!] Unknown error, expand with errors from peer service
+                    match peer_service
+                        .call((*peer_id, Request::from(req)))
+                        .await
+                    {
+                        Ok(res) => parse_code(res.metadata().unwrap().return_code),
+                        Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service 
                     }
                 } else {
                     workspaces
@@ -839,11 +834,11 @@ impl Service<RemoveShelf> for RpcService {
                             })
                         });
                     }
-                    0
+                    ReturnCode::Success
                 }
             };
 
-            if return_code == 0 {
+            if return_code == ReturnCode::Success {
                 notify_queue.write().await.push_back({
                     Notification::Operation(Operation {
                         target: ActionTarget::Workspace.into(),
@@ -855,7 +850,7 @@ impl Service<RemoveShelf> for RpcService {
 
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
-                return_code,
+                return_code: return_code as u32,
                 error_data,
             };
             Ok(RemoveShelfResponse {
@@ -886,8 +881,8 @@ impl Service<EditShelf> for RpcService {
             let shelf_id: Option<ShelfId>;
             let mut remote: bool = false;
 
-            //[TODO] Macro for uuid unwrap from bytes & validation
-            //[/] Workspace ID unwrap & validation
+            //[TODO] Macro for uuid unwrap from bytes & validation 
+            //[/] Workspace ID unwrap & validation 
             if let Ok(id) = uuid(req.workspace_id.clone()) {
                 if workspaces.read().await.contains_key(&id) {
                     workspace_id = Some(id);
@@ -899,23 +894,22 @@ impl Service<EditShelf> for RpcService {
             }
 
             if workspace_id.is_none() {
-                let return_code = 2; // Workspace does not exist 
+                let return_code = ReturnCode::WorkspaceNotFound; // Workspace does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(EditShelfResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let workspace_id = workspace_id.unwrap();
 
-            //[/] Shelf ID unwrap & validation
-            if let Ok(id) = uuid(req.shelf_id.clone()) {
+            //[/] Shelf ID unwrap & validation 
+            if let Ok(id) = uuid(req.shelf_id.clone()) {            
                 let workspace_r = workspaces.read().await;
-                let (shelf_exists, is_remote) =
-                    workspace_r.get(&workspace_id).unwrap().contains(id); //Workspace ID already validated
+                let (shelf_exists, is_remote) = workspace_r.get(&workspace_id).unwrap().contains(id);  //Workspace ID already validated
                 if shelf_exists {
                     shelf_id = Some(id);
                     remote = is_remote;
@@ -927,28 +921,31 @@ impl Service<EditShelf> for RpcService {
             }
 
             if shelf_id.is_none() {
-                let return_code = 3; // Shelf does not exist 
+                let return_code = ReturnCode::ShelfNotFound; // Shelf does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(EditShelfResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let shelf_id = shelf_id.unwrap();
 
-            //[/] Business Logic
+            //[/] Business Logic 
             let return_code = {
                 if remote {
                     let workspace_r = workspaces.read().await;
                     let workspace = workspace_r.get(&workspace_id).unwrap();
                     let remote_shelf = workspace.remote_shelves.get(&shelf_id);
                     let (_, peer_id) = remote_shelf.unwrap(); // Already validated  
-                    match peer_service.call((*peer_id, Request::from(req))).await {
-                        Ok(res) => res.metadata().unwrap().return_code,
-                        Err(_) => 8, // [!] Unknown error, expand with errors from peer service
+                    match peer_service
+                        .call((*peer_id, Request::from(req)))
+                        .await
+                    {
+                        Ok(res) => parse_code(res.metadata().unwrap().return_code),
+                        Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service 
                     }
                 } else {
                     workspaces
@@ -968,13 +965,13 @@ impl Service<EditShelf> for RpcService {
                             action: ActionType::Edit.into(),
                         })
                     });
-                    0
+                    ReturnCode::Success
                 }
-            };
-
+            }; 
+            
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
-                return_code,
+                return_code: return_code as u32,
                 error_data,
             };
             Ok(EditShelfResponse {
@@ -1008,8 +1005,8 @@ impl Service<AddShelf> for RpcService {
 
             let workspace_id: Option<WorkspaceId>;
 
-            //[TODO] Macro for uuid unwrap from bytes & validation
-            //[/] Workspace ID unwrap & validation
+            //[TODO] Macro for uuid unwrap from bytes & validation 
+            //[/] Workspace ID unwrap & validation 
             if let Ok(id) = uuid(req.workspace_id.clone()) {
                 if workspaces.read().await.contains_key(&id) {
                     workspace_id = Some(id);
@@ -1021,45 +1018,45 @@ impl Service<AddShelf> for RpcService {
             }
 
             if workspace_id.is_none() {
-                let return_code = 2; // Workspace does not exist 
+                let return_code = ReturnCode::WorkspaceNotFound; // Workspace does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(AddShelfResponse {
                     shelf_id: None,
                     metadata: Some(metadata),
-                });
+                })
             }
             let workspace_id = workspace_id.unwrap();
 
-            //[/] Peer ID unwrap & validation
+            //[/] Peer ID unwrap & validation 
             let peer_id = parse_peer_id(&req.peer_id.clone());
-
+            
             if let Err(_) = peer_id {
-                let return_code = 1; // Peer does not exist 
+                let return_code = ReturnCode::PeerNotFound; // Peer does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(AddShelfResponse {
                     shelf_id: None,
                     metadata: Some(metadata),
-                });
+                })
             }
             let peer_id = peer_id.unwrap();
 
-            //[/] Business Logic
+            //[/] Business Logic 
             let return_code = {
                 if peer_id != daemon_info.id {
                     match peer_service
                         .call((peer_id, Request::from(req.clone())))
                         .await
                     {
-                        Ok(res) => res.metadata().unwrap().return_code,
-                        Err(_) => 8, // [!] Unknown error, expand with errors from peer service
+                        Ok(res) => parse_code(res.metadata().unwrap().return_code),
+                        Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service 
                     }
                 } else {
                     let path = PathBuf::from(req.path.clone());
@@ -1078,13 +1075,13 @@ impl Service<AddShelf> for RpcService {
                                 );
 
                             shelf_id = Some(id);
-                            0
+                            ReturnCode::Success
                         }
                         Err(e) => {
                             error_data = Some(ErrorData {
                                 error_data: vec![e.to_string()],
                             });
-                            3
+                            ReturnCode::ShelfCreationIOError
                         }
                     }
                 }
@@ -1097,7 +1094,7 @@ impl Service<AddShelf> for RpcService {
                 encoded_shelf_id = None;
             }
 
-            if return_code == 0 {
+            if return_code == ReturnCode::Success {
                 notify_queue.write().await.push_back({
                     Notification::Operation(Operation {
                         target: ActionTarget::Workspace.into(),
@@ -1108,7 +1105,7 @@ impl Service<AddShelf> for RpcService {
             }
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
-                return_code,
+                return_code: return_code as u32,
                 error_data,
             };
             Ok(AddShelfResponse {
@@ -1138,9 +1135,9 @@ impl Service<DeleteWorkspace> for RpcService {
             let error_data: Option<ErrorData> = None;
 
             let workspace_id: Option<WorkspaceId>;
-
-            //[TODO] Macro for uuid unwrap from bytes & validation
-            //[/] Workspace ID unwrap & validation
+            
+            //[TODO] Macro for uuid unwrap from bytes & validation 
+            //[/] Workspace ID unwrap & validation 
             if let Ok(id) = uuid(req.workspace_id.clone()) {
                 if workspaces.read().await.contains_key(&id) {
                     workspace_id = Some(id);
@@ -1152,19 +1149,19 @@ impl Service<DeleteWorkspace> for RpcService {
             }
 
             if workspace_id.is_none() {
-                let return_code = 2; // Workspace does not exist 
+                let return_code = ReturnCode::WorkspaceNotFound; // Workspace does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(DeleteWorkspaceResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let workspace_id = workspace_id.unwrap();
 
-            //[/] Business Logic
+            //[/] Business Logic 
             let return_code = {
                 let tag_rm: Vec<(TagId, WorkspaceId)> = tag_manager
                     .write()
@@ -1192,21 +1189,20 @@ impl Service<DeleteWorkspace> for RpcService {
                     shelf_manager.write().await.try_remove_shelf(shelf_id).await;
                 }
                 workspaces.write().await.remove(&workspace_id);
-                0
+                ReturnCode::Success
             };
 
-            if return_code == 0 {
-                notify_queue.write().await.push_back({
-                    Notification::Operation(Operation {
-                        target: ActionTarget::Workspace.into(),
-                        id: workspace_id.as_bytes().to_vec(),
-                        action: ActionType::Delete.into(),
-                    })
-                });
-            }
+            notify_queue.write().await.push_back({  // Always Success 
+                Notification::Operation(Operation {
+                    target: ActionTarget::Workspace.into(),
+                    id: workspace_id.as_bytes().to_vec(),
+                    action: ActionType::Delete.into(),
+                })
+            });
+
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
-                return_code,
+                return_code: return_code as u32,
                 error_data: None,
             };
             Ok(DeleteWorkspaceResponse {
@@ -1237,8 +1233,8 @@ impl Service<EditTag> for RpcService {
             let workspace_id: Option<WorkspaceId>;
             let parent_id: Option<TagId>;
 
-            //[TODO] Macro for uuid unwrap from bytes & validation
-            //[/] Workspace ID unwrap & validation
+            //[TODO] Macro for uuid unwrap from bytes & validation 
+            //[/] Workspace ID unwrap & validation 
             if let Ok(id) = uuid(req.workspace_id.clone()) {
                 if workspaces.read().await.contains_key(&id) {
                     workspace_id = Some(id);
@@ -1250,96 +1246,89 @@ impl Service<EditTag> for RpcService {
             }
 
             if workspace_id.is_none() {
-                let return_code = 2; // Workspace does not exist 
+                let return_code = ReturnCode::WorkspaceNotFound; // Workspace does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(EditTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let workspace_id = workspace_id.unwrap();
-
-            //[/] Tag ID unwrap & validation
+            
+            //[/] Tag ID unwrap & validation 
             if let Ok(id) = uuid(req.tag_id.clone()) {
-                if tag_manager
-                    .read()
-                    .await
-                    .tags
-                    .contains_key(&(id, workspace_id))
-                {
+                if tag_manager.read().await.tags.contains_key(&(id, workspace_id)) {
                     tag_id = Some(id);
                 } else {
                     tag_id = None;
                 }
             } else {
-                tag_id = None;
+                tag_id =  None;
             }
 
             if tag_id.is_none() {
-                let return_code = 1; // Tag does not exist 
+                let return_code = ReturnCode::TagNotFound; // Tag does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(EditTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let tag_id = tag_id.unwrap();
 
-            //[/] Parent ID unwrap & validation
-            //[?] Inconsistent: Unwrap and validate here or in TagManager ??
+            //[/] Parent ID unwrap & validation 
+            //[?] Inconsistent: Unwrap and validate here or in TagManager ?? 
             if let Some(id) = req.parent_id.clone() {
                 if let Ok(id) = uuid(id.clone()) {
-                    if tag_manager
-                        .read()
-                        .await
-                        .tags
-                        .contains_key(&(id, workspace_id))
-                    {
+                    if tag_manager.read().await.tags.contains_key(&(id, workspace_id)) {
                         parent_id = Some(id);
                     } else {
                         parent_id = None;
                     }
                 } else {
-                    parent_id = None;
+                    parent_id =  None;
                 }
                 if parent_id.is_none() {
-                    let return_code = 4; // Parent does not exist 
+                    let return_code = ReturnCode::ParentNotFound; // Parent does not exist 
                     let metadata = ResponseMetadata {
                         request_uuid: metadata.request_uuid,
-                        return_code,
+                        return_code: return_code as u32,
                         error_data,
                     };
                     return Ok(EditTagResponse {
                         metadata: Some(metadata),
-                    });
+                    })
                 }
             } else {
                 parent_id = None;
             }
 
-            //[/] Tag Name Validation
+            //[/] Tag Name Validation 
             if req.name.clone().is_empty() {
-                let return_code = 1; // Tag does not exist 
+                let return_code = ReturnCode::TagNameEmpty; // Name is empty
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(EditTagResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
 
-            //[/] Business Logic
+            //[/] Business Logic 
             let return_code = {
                 let mut tag_manager_w = tag_manager.write().await;
-                let tag = tag_manager_w.tags.get_mut(&(tag_id, workspace_id)).unwrap();
+                let tag = tag_manager_w
+                    .tags
+                    .get_mut(&(tag_id, workspace_id))
+                    .unwrap();
                 tag.tag_ref.write().unwrap().name = req.name.clone();
                 tag.tag_ref.write().unwrap().priority = req.priority;
                 if req.parent_id.is_some() {
@@ -1355,10 +1344,10 @@ impl Service<EditTag> for RpcService {
                 } else {
                     tag.tag_ref.write().unwrap().parent = None;
                 }
-                0
+                ReturnCode::Success
             };
 
-            if return_code == 0 {
+            if return_code == ReturnCode::Success {
                 notify_queue.write().await.push_back({
                     Notification::Operation(Operation {
                         target: ActionTarget::Tag.into(),
@@ -1370,7 +1359,7 @@ impl Service<EditTag> for RpcService {
 
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
-                return_code,
+                return_code: return_code as u32,
                 error_data: None,
             };
             Ok(EditTagResponse {
@@ -1398,8 +1387,8 @@ impl Service<EditWorkspace> for RpcService {
 
             let workspace_id: Option<WorkspaceId>;
 
-            //[TODO] Macro for uuid unwrap from bytes & validation
-            //[/] Workspace ID unwrap & validation
+            //[TODO] Macro for uuid unwrap from bytes & validation 
+            //[/] Workspace ID unwrap & validation 
             if let Ok(id) = uuid(req.workspace_id.clone()) {
                 if workspaces.read().await.contains_key(&id) {
                     workspace_id = Some(id);
@@ -1411,41 +1400,41 @@ impl Service<EditWorkspace> for RpcService {
             }
 
             if workspace_id.is_none() {
-                let return_code = 2; // Workspace does not exist 
+                let return_code = ReturnCode::WorkspaceNotFound; // Workspace does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(EditWorkspaceResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
             let workspace_id = workspace_id.unwrap();
 
-            //[/] Workspace Name Validation
+            //[/] Workspace Name Validation 
             if req.name.clone().is_empty() {
-                let return_code = 1; // Tag does not exist 
+                let return_code = ReturnCode::WorkspaceNameEmpty; // Name is Empty 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(EditWorkspaceResponse {
                     metadata: Some(metadata),
-                });
+                })
             }
 
-            //[/] Business Logic
+            //[/] Business Logic 
             let return_code = {
                 let mut workspace_r = workspaces.write().await;
                 let to_edit = workspace_r.get_mut(&workspace_id).unwrap();
                 to_edit.name = req.name;
                 to_edit.description = req.description;
-                0
+                ReturnCode::Success
             };
 
-            if return_code == 0 {
+            if return_code == ReturnCode::Success {
                 notify_queue.write().await.push_back({
                     Notification::Operation(Operation {
                         target: ActionTarget::Workspace.into(),
@@ -1457,7 +1446,7 @@ impl Service<EditWorkspace> for RpcService {
 
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
-                return_code,
+                return_code: return_code as u32,
                 error_data: None,
             };
             return Ok(EditWorkspaceResponse {
@@ -1485,8 +1474,8 @@ impl Service<GetShelves> for RpcService {
 
             let workspace_id: Option<WorkspaceId>;
 
-            //[TODO] Macro for uuid unwrap from bytes & validation
-            //[/] Workspace ID unwrap & validation
+            //[TODO] Macro for uuid unwrap from bytes & validation 
+            //[/] Workspace ID unwrap & validation 
             if let Ok(id) = uuid(req.workspace_id.clone()) {
                 if workspaces.read().await.contains_key(&id) {
                     workspace_id = Some(id);
@@ -1498,18 +1487,19 @@ impl Service<GetShelves> for RpcService {
             }
 
             if workspace_id.is_none() {
-                let return_code = 2; // Workspace does not exist 
+                let return_code = ReturnCode::WorkspaceNotFound; // Workspace does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(GetShelvesResponse {
                     shelves: Vec::new(),
                     metadata: Some(metadata),
-                });
+                })
             }
             let workspace_id = workspace_id.unwrap();
+
 
             let mut shelves = Vec::new();
             if let Some(workspace) = workspaces.read().await.get(&workspace_id) {
@@ -1532,7 +1522,7 @@ impl Service<GetShelves> for RpcService {
             }
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
-                return_code: 0,
+                return_code: ReturnCode::Success as u32,
                 error_data: None,
             };
             Ok(GetShelvesResponse {
@@ -1587,7 +1577,7 @@ impl Service<GetWorkspaces> for RpcService {
 
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
-                return_code: 0,
+                return_code: ReturnCode::Success as u32,
                 error_data: None,
             };
             Ok(GetWorkspacesResponse {
@@ -1639,7 +1629,7 @@ impl Service<CreateWorkspace> for RpcService {
 
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
-                return_code: 0,
+                return_code: ReturnCode::Success as u32,
                 error_data: None,
             };
             return Ok(CreateWorkspaceResponse {
@@ -1666,12 +1656,12 @@ impl Service<CreateTag> for RpcService {
         let metadata = req.metadata.clone().unwrap();
         Box::pin(async move {
             let error_data: Option<ErrorData> = None;
-
+            
             let parent_id: Option<TagId>;
             let workspace_id: Option<WorkspaceId>;
 
-            //[TODO] Macro for uuid unwrap from bytes & validation
-            //[/] Workspace ID unwrap & validation
+            //[TODO] Macro for uuid unwrap from bytes & validation 
+            //[/] Workspace ID unwrap & validation 
             if let Ok(id) = uuid(req.workspace_id.clone()) {
                 if workspaces.read().await.contains_key(&id) {
                     workspace_id = Some(id);
@@ -1683,47 +1673,42 @@ impl Service<CreateTag> for RpcService {
             }
 
             if workspace_id.is_none() {
-                let return_code = 2; // Workspace does not exist 
+                let return_code = ReturnCode::WorkspaceNotFound; // Workspace does not exist 
                 let metadata = ResponseMetadata {
                     request_uuid: metadata.request_uuid,
-                    return_code,
+                    return_code: return_code as u32,
                     error_data,
                 };
                 return Ok(CreateTagResponse {
                     tag_id: None,
                     metadata: Some(metadata),
-                });
+                })
             }
             let workspace_id = workspace_id.unwrap();
 
-            //[/] Parent ID unwrap & validation
-            //[?] Inconsistent: Unwrap and validate here or in TagManager ??
+            //[/] Parent ID unwrap & validation 
+            //[?] Inconsistent: Unwrap and validate here or in TagManager ?? 
             if let Some(id) = req.parent_id.clone() {
                 if let Ok(id) = uuid(id.clone()) {
-                    if tag_manager
-                        .read()
-                        .await
-                        .tags
-                        .contains_key(&(id, workspace_id))
-                    {
+                    if tag_manager.read().await.tags.contains_key(&(id, workspace_id)) {
                         parent_id = Some(id);
                     } else {
                         parent_id = None;
                     }
                 } else {
-                    parent_id = None;
+                    parent_id =  None;
                 }
                 if parent_id.is_none() {
-                    let return_code = 4; // Parent does not exist 
+                    let return_code = ReturnCode::ParentNotFound; // Parent does not exist 
                     let metadata = ResponseMetadata {
                         request_uuid: metadata.request_uuid,
-                        return_code,
+                        return_code: return_code as u32,
                         error_data,
                     };
                     return Ok(CreateTagResponse {
                         tag_id: None,
                         metadata: Some(metadata),
-                    });
+                    })
                 }
             } else {
                 parent_id = None;
@@ -1748,7 +1733,7 @@ impl Service<CreateTag> for RpcService {
                     // If the tag was created successfully, return the response with the tag ID
                     let metadata = ResponseMetadata {
                         request_uuid: metadata.request_uuid,
-                        return_code: 0, // Success
+                        return_code: ReturnCode::Success as u32, // Success
                         error_data: None,
                     };
                     return Ok(CreateTagResponse {
@@ -1760,7 +1745,7 @@ impl Service<CreateTag> for RpcService {
                     // If there was an error creating the tag, return an error response
                     let metadata = ResponseMetadata {
                         request_uuid: metadata.request_uuid,
-                        return_code: 2, // Requested parent does not exist
+                        return_code: ReturnCode::ParentNotFound as u32, // Requested parent does not exist
                         error_data: None,
                     };
                     return Ok(CreateTagResponse {
