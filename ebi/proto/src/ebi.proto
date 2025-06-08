@@ -60,7 +60,7 @@ message CreateWorkspace { //[x]
 } //[x] Notify 
 
 message EditWorkspace { //[x] 
-  uint64 workspace_id = 1;
+  bytes workspace_id = 1;
   string name = 2;
   string description = 3;
   RequestMetadata metadata = 4;
@@ -71,12 +71,12 @@ message EditWorkspaceResponse { //[x]
 }
 
 message CreateWorkspaceResponse { //[x] 
-  uint64 workspace_id = 1;
+  bytes workspace_id = 1;
   ResponseMetadata metadata = 2;
 }
 
 message DeleteWorkspace { //[x] 
-  uint64 workspace_id = 1;
+  bytes workspace_id = 1;
   RequestMetadata metadata = 4;
 } //[x] Notify 
 
@@ -94,7 +94,7 @@ message GetWorkspacesResponse { //[x]
 }
 
 message Workspace {
-  uint64 workspace_id = 1;
+  bytes workspace_id = 1;
   string name = 2;
   string description = 3;
   repeated Tag tags = 4;
@@ -107,13 +107,13 @@ message AddShelf { //[x]
   string path = 2; 
   optional string name = 3;
   optional string description = 4;
-  uint64 workspace_id = 5;
+  bytes workspace_id = 5;
   RequestMetadata metadata = 6;
 } //[x] Notify 
 
 message EditShelf { //[x] 
-  uint64 shelf_id = 1;
-  uint64 workspace_id = 2;
+  bytes shelf_id = 1;
+  bytes workspace_id = 2;
   string name = 3;
   string description = 4;
   RequestMetadata metadata = 6;
@@ -124,12 +124,12 @@ message EditShelfResponse { //[x]
 }
 
 message AddShelfResponse { //[x] 
-  optional uint64 shelf_id = 1;
+  optional bytes shelf_id = 1;
   ResponseMetadata metadata = 2;
 }
 
 message GetShelves { //[x] 
-  uint64 workspace_id = 1;
+  bytes workspace_id = 1;
   RequestMetadata metadata = 2;
 }
 
@@ -139,8 +139,8 @@ message GetShelvesResponse { //[x]
 }
 
 message RemoveShelf { //[x] 
-  uint64 shelf_id = 1;
-  uint64 workspace_id = 2;
+  bytes shelf_id = 1;
+  bytes workspace_id = 2;
   RequestMetadata metadata = 3;
 } //[x] Notify 
 
@@ -149,7 +149,7 @@ message RemoveShelfResponse { //[x]
 }
 
 message Shelf {
-  uint64 shelf_id = 1;
+  bytes shelf_id = 1;
   string name = 2;
   bytes peer_id = 3;
   string path = 4;
@@ -158,24 +158,24 @@ message Shelf {
 //[#] Tag Operations 
 
 message CreateTag { //[x] 
-  uint64 workspace_id = 1;
+  bytes workspace_id = 1;
   string name = 2;
   uint64 priority = 3;
-  optional uint64 parent_id = 4;
+  optional bytes parent_id = 4;
   RequestMetadata metadata = 5;
 } //[x] Notify 
 
 message CreateTagResponse { //[x] 
-  optional uint64 tag_id = 1;
+  optional bytes tag_id = 1;
   ResponseMetadata metadata = 2;
 }
 
 message EditTag { //[x] 
-  uint64 tag_id = 1;
-  uint64 workspace_id = 2;
+  bytes tag_id = 1;
+  bytes workspace_id = 2;
   string name = 3;
   uint64 priority = 4;
-  optional uint64 parent_id = 5;
+  optional bytes parent_id = 5;
   RequestMetadata metadata = 6;
 } //[x] Notify 
 
@@ -184,12 +184,11 @@ message EditTagResponse { //[x]
 }
 
 message AttachTag { //[x] 
-  uint64 workspace_id = 1;
-  uint64 shelf_id = 2;
-  uint64 tag_id = 3;
+  bytes workspace_id = 1;
+  bytes shelf_id = 2;
+  bytes tag_id = 3;
   string path = 4; 
-  uint64 workspace = 5;
-  RequestMetadata metadata = 6;
+  RequestMetadata metadata = 5;
 } //[x] Notify 
 
 message AttachTagResponse { //[x] 
@@ -197,21 +196,19 @@ message AttachTagResponse { //[x]
 }
 
 message DetachTag { //[x] 
-  uint64 workspace_id = 1;
-  uint64 shelf_id = 2;
-  uint64 tag_id = 3;
+  bytes workspace_id = 1;
+  bytes shelf_id = 2;
+  bytes tag_id = 3;
   string path = 4;
-  uint64 workspace = 5;
-  RequestMetadata metadata = 6;
+  RequestMetadata metadata = 5;
 } //[x] Notify 
 
 message StripTag { //[x] 
-  uint64 workspace_id = 1;
-  uint64 shelf_id = 2;
-  uint64 tag_id = 3;
+  bytes workspace_id = 1;
+  bytes shelf_id = 2;
+  bytes tag_id = 3;
   string path = 4;
-  uint64 workspace = 5;
-  RequestMetadata metadata = 6;
+  RequestMetadata metadata = 5;
 } //[x] Notify 
 
 message DetachTagResponse { //[x] 
@@ -223,8 +220,8 @@ message StripTagResponse { //[x]
 }
 
 message DeleteTag { //[x] 
-  uint64 workspace_id = 1;
-  uint64 tag_id = 2;
+  bytes workspace_id = 1;
+  bytes tag_id = 2;
   RequestMetadata metadata = 3;
 } //[x] Notify 
 
@@ -233,10 +230,10 @@ message DeleteTagResponse { //[x]
 }
 
 message Tag {
-  uint64 tag_id = 1;
+  bytes tag_id = 1;
   string name = 2;
   uint64 priority = 3;
-  optional uint64 parent_id = 4;
+  optional bytes parent_id = 4;
 }
 
 //[#] File Structures 
@@ -285,7 +282,7 @@ message Heartbeat {}
 
 message Operation {
   ActionTarget target = 1;
-  uint64 id = 2;
+  bytes id = 2;
   ActionType action = 3;
 }
 
