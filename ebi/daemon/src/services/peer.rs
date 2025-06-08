@@ -15,6 +15,8 @@ use tokio::time::{Duration, sleep};
 use tower::Service;
 use uuid::Uuid;
 
+use crate::services::rpc::RequestId;
+
 const HEADER_SIZE: usize = 10; //[!] Move to Constant file 
 
 pub enum PeerError {
@@ -29,7 +31,7 @@ pub enum PeerError {
 pub struct PeerService {
     pub peers: Arc<RwLock<HashMap<NodeId, Peer>>>,
     pub clients: Arc<RwLock<Vec<Client>>>,
-    pub responses: Arc<RwLock<HashMap<Uuid, Response>>>,
+    pub responses: Arc<RwLock<HashMap<RequestId, Response>>>,
 }
 
 pub struct Peer {
@@ -75,7 +77,7 @@ impl Service<(NodeId, Request)> for PeerService {
             let mut payload = Vec::new();
             let request_uuid = Uuid::now_v7();
             let req = req.1.clone();
-            req.metadata().as_mut().unwrap().request_uuid = request_uuid.to_string();
+            req.metadata().as_mut().unwrap().request_uuid = request_uuid.as_bytes().to_vec();
             req.encode(&mut payload).unwrap();
             let mut buffer = vec![0; HEADER_SIZE];
             buffer[0] = MessageType::Request as u8;

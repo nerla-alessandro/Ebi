@@ -7,11 +7,14 @@ use std::path::PathBuf;
 use std::result::Result;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 use super::file::FileRef;
 
+pub type ShelfId = Uuid;
+
 pub struct ShelfInfo {
-    pub id: u64,
+    pub id: ShelfId,
     pub name: String,
     pub description: String,
     pub root_path: PathBuf,
@@ -20,7 +23,7 @@ pub struct ShelfInfo {
 
 impl ShelfInfo {
     pub fn new(
-        id: u64,
+        id: ShelfId,
         name: Option<String>,
         description: Option<String>,
         root_path: String,
@@ -44,9 +47,9 @@ impl ShelfInfo {
 }
 
 pub struct ShelfManager {
-    pub shelves: HashMap<u64, Arc<RwLock<Shelf>>>,
-    pub count: HashMap<u64, u64>,     // Workspaces per Shelf
-    pub paths: HashMap<PathBuf, u64>, // Path to Shelf ID
+    pub shelves: HashMap<ShelfId, Arc<RwLock<Shelf>>>,
+    pub count: HashMap<ShelfId, u64>,     // Workspaces per Shelf
+    pub paths: HashMap<PathBuf, ShelfId>, // Path to Shelf ID
 }
 
 impl ShelfManager {
@@ -58,7 +61,7 @@ impl ShelfManager {
         }
     }
 
-    pub fn add_shelf(&mut self, path: PathBuf) -> Result<u64, io::Error> {
+    pub fn add_shelf(&mut self, path: PathBuf) -> Result<ShelfId, io::Error> {
         if self.paths.contains_key(&path) {
             let id = self.paths[&path];
             self.count.get_mut(&id).map(|c| *c += 1);
@@ -66,7 +69,7 @@ impl ShelfManager {
         }
 
         let id = loop {
-            let id = rand::random::<u64>();
+            let id = Uuid::now_v7();
             if !self.shelves.contains_key(&id) {
                 break id;
             }
@@ -78,7 +81,7 @@ impl ShelfManager {
         return Ok(id);
     }
 
-    pub async fn try_remove_shelf(&mut self, id: u64) -> bool {
+    pub async fn try_remove_shelf(&mut self, id: ShelfId) -> bool {
         if self.shelves.contains_key(&id) {
             let workspace_count = self.count.get(&id).unwrap();
             if *workspace_count > 1 {

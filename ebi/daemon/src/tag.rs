@@ -4,9 +4,15 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 use std::vec;
 
+use uuid::Uuid;
+
+use crate::workspace::WorkspaceId;
+
+pub type TagId = Uuid;
+
 #[derive(Debug, Eq, PartialOrd, PartialEq, Ord, Hash, Default)]
 pub struct Tag {
-    pub id: u64,
+    pub id: TagId,
     pub priority: u64,
     pub name: String,
     pub parent: Option<TagRef>,
@@ -63,7 +69,7 @@ impl Eq for TagRef {}
 
 //[#] We require a tag manmager
 pub struct TagManager {
-    pub tags: HashMap<(u64, u64), TagRef>, // (Tag_ID, Workspace_ID) -> TagRef - [Global Tags have Workspace_ID = 0]
+    pub tags: HashMap<(TagId, WorkspaceId), TagRef>, // Global Tags have Workspace_ID = 0
 }
 
 impl TagManager {
@@ -73,8 +79,12 @@ impl TagManager {
         }
     }
 
-    pub fn validate(&self, tag_set: HashSet<u64>, workspace_id: u64) -> Result<(), TagErr> {
-        let mut missing: Vec<u64> = vec![];
+    pub fn validate(
+        &self,
+        tag_set: HashSet<TagId>,
+        workspace_id: WorkspaceId,
+    ) -> Result<(), TagErr> {
+        let mut missing: Vec<TagId> = vec![];
         for tag in tag_set {
             if !self.tags.contains_key(&(tag.clone(), workspace_id)) {
                 missing.push(tag.clone());
@@ -90,10 +100,10 @@ impl TagManager {
     pub fn create_tag(
         &mut self,
         name: &str,
-        workspace_id: u64,
+        workspace_id: WorkspaceId,
         priority: u64,
-        parent: Option<u64>,
-    ) -> Result<u64, TagErr> {
+        parent: Option<TagId>,
+    ) -> Result<TagId, TagErr> {
         if parent.is_some()
             && !self
                 .tags
@@ -103,7 +113,7 @@ impl TagManager {
         }
 
         let id = loop {
-            let id = rand::random::<u64>();
+            let id = Uuid::now_v7();
             if !self.tags.contains_key(&(id.clone(), workspace_id.clone())) {
                 break id;
             }
@@ -132,7 +142,7 @@ impl TagManager {
         Ok(id)
     }
 
-    pub fn get_tags(&mut self, workspace_id: u64) -> Vec<TagRef> {
+    pub fn get_tags(&mut self, workspace_id: WorkspaceId) -> Vec<TagRef> {
         let mut tags: Vec<TagRef> = vec![];
         for (key, tag) in self.tags.iter() {
             if key.1 == workspace_id {
@@ -144,6 +154,6 @@ impl TagManager {
 }
 
 pub enum TagErr {
-    TagMissing(Vec<u64>),
-    ParentMissing(u64),
+    TagMissing(Vec<TagId>),
+    ParentMissing(TagId),
 }
