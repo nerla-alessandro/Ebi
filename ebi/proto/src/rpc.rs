@@ -73,7 +73,7 @@ pub enum ReturnCode {
     TagNameEmpty = 204,
     WorkspaceNameEmpty = 304,
     ShelfCreationIOError = 501,
-    PathNotDir = 502
+    PathNotDir = 502,
 }
 
 pub fn parse_code(code: u32) -> ReturnCode {
@@ -92,7 +92,7 @@ pub fn parse_code(code: u32) -> ReturnCode {
         204 => ReturnCode::TagNameEmpty,
         304 => ReturnCode::WorkspaceNameEmpty,
         501 => ReturnCode::ShelfCreationIOError,
-        _ => ReturnCode::ParseError
+        _ => ReturnCode::ParseError,
     }
 }
 impl ReturnCode {
@@ -117,7 +117,6 @@ impl ReturnCode {
         }
     }
 }
-
 
 #[derive(Debug)]
 pub enum MessageType {
