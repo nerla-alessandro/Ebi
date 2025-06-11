@@ -59,6 +59,7 @@ impl ShelfManager {
             count: HashMap::new(),
             paths: HashMap::new(),
         }
+        //[!] Run automatic tagging on all files in the shelf 
     }
 
     pub fn add_shelf(&mut self, path: PathBuf) -> Result<ShelfId, io::Error> {
@@ -138,6 +139,7 @@ impl Shelf {
 
     pub async fn refresh(&self) -> Result<bool, io::Error> {
         todo!();
+        //[!] Run automatic tagging on all new or modified files in the shelf 
     }
 
     pub fn attach(&mut self, path: PathBuf, tag: TagRef) -> Result<bool, UpdateErr> {

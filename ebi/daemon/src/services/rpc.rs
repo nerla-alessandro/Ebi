@@ -8,6 +8,7 @@ use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
+use crate::tag::TagErr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::RwLock;
@@ -1752,11 +1753,18 @@ impl Service<CreateTag> for RpcService {
                         metadata: Some(metadata),
                     });
                 }
-                Err(_) => {
+                Err(e) => {
+                    let return_code: ReturnCode;
+                    return_code = match e {
+                        TagErr::DuplicateTag(_) => ReturnCode::DuplicateTag, // Tag name already exists
+                        TagErr::ParentMissing(_) => ReturnCode::ParentNotFound, // Parent tag does not exist
+                        TagErr::InconsistentTagManager(_) => ReturnCode::InternalStateError, // Inconsistent tag manager state
+                        TagErr::TagMissing(_) => todo!() //[!] Fix unreachable errors in Error Enums
+                    };
                     // If there was an error creating the tag, return an error response
                     let metadata = ResponseMetadata {
                         request_uuid: metadata.request_uuid,
-                        return_code: ReturnCode::ParentNotFound as u32, // Requested parent does not exist
+                        return_code: return_code as u32, // Requested parent does not exist
                         error_data: None,
                     };
                     return Ok(CreateTagResponse {

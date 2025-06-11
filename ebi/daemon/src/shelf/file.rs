@@ -8,6 +8,27 @@ use std::os::unix::fs::MetadataExt;
 use std::os::windows::fs::MetadataExt;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use iroh::NodeId;
+
+#[derive(Debug, Clone)]
+pub struct FileSummary {
+    pub file_ref: FileRef,
+    pub root: Option<NodeId>, // Whether the file is local or remote
+    pub path: PathBuf,
+    pub metadata: FileMetadata,
+    //[?] Icon/Preview ?? 
+}
+
+impl FileSummary {
+    fn new(file_ref: FileRef, root: Option<NodeId>, path: PathBuf, metadata: FileMetadata) -> Self {
+        FileSummary {
+            file_ref,
+            root,
+            path,
+            metadata,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct FileRef {

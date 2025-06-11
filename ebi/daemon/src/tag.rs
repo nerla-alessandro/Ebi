@@ -3,12 +3,136 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 use std::vec;
+use crate::shelf::file::FileSummary;
 
 use uuid::Uuid;
 
 use crate::workspace::WorkspaceId;
 
 pub type TagId = Uuid;
+
+//[#] Automatic Tagging 
+
+pub enum AutoTagErr {
+    MissingAttribute,
+    ParentMissing,
+    ManagerLockError,
+    InconsistentTagManager
+}
+
+pub trait Tagger {
+    fn generate_tag(
+        &mut self,
+        workspace_id: WorkspaceId,
+        file: FileSummary,
+        tag_manager: Arc<RwLock<TagManager>>,
+        priority: Option<u64>, // 0 is the highest priority
+        parent: Option<TagId>,
+    ) -> Result<Option<TagRef>, AutoTagErr>; 
+}
+
+struct ExtensionTagger {}
+
+impl Tagger for ExtensionTagger {
+    fn generate_tag(
+        &mut self,
+        workspace_id: WorkspaceId,
+        file: FileSummary,
+        tag_manager: Arc<RwLock<TagManager>>,
+        priority: Option<u64>,
+        parent: Option<TagId>,
+    ) -> Result<Option<TagRef>, AutoTagErr> {
+        if let Some(ext) = file.path.extension() {
+            let mut manager = tag_manager.write().map_err(|_| AutoTagErr::ManagerLockError)?;
+            let tag = manager.get_tag(
+                workspace_id,
+                &ext.to_string_lossy().to_string(),
+                priority.unwrap_or(u64::MAX),
+                parent,
+            );
+            match tag {
+                Ok(tag_ref) => Ok(Some(tag_ref)),
+                Err(TagErr::ParentMissing(_)) => Err(AutoTagErr::ParentMissing),
+                Err(TagErr::InconsistentTagManager(_)) => Err(AutoTagErr::InconsistentTagManager),
+                Err(TagErr::TagMissing(_)) => todo!(),
+                Err(TagErr::DuplicateTag(_)) => Ok(None), // File already tagged (or duplicate tag) //[!] Where should we check if it has alreaddy been tagged? 
+            }
+        }
+        else {
+            Err(AutoTagErr::MissingAttribute)
+        }
+    }
+}
+
+struct NameTagger {}
+
+impl Tagger for NameTagger {
+    fn generate_tag(
+        &mut self,
+        workspace_id: WorkspaceId,
+        file: FileSummary,
+        tag_manager: Arc<RwLock<TagManager>>,
+        priority: Option<u64>,
+        parent: Option<TagId>,
+    ) -> Result<Option<TagRef>, AutoTagErr> {
+        if let Some(name) = file.path.file_stem() {
+            let mut manager = tag_manager.write().map_err(|_| AutoTagErr::ManagerLockError)?;
+            let tag = manager.get_tag(
+                workspace_id,
+                &name.to_string_lossy().to_string(),
+                priority.unwrap_or(u64::MAX),
+                parent,
+            );
+            match tag {
+                Ok(tag_ref) => Ok(Some(tag_ref)),
+                Err(TagErr::ParentMissing(_)) => Err(AutoTagErr::ParentMissing),
+                Err(TagErr::InconsistentTagManager(_)) => Err(AutoTagErr::InconsistentTagManager),
+                Err(TagErr::TagMissing(_)) => todo!(),
+                Err(TagErr::DuplicateTag(_)) => Ok(None), // File already tagged (or duplicate tag) //[!] Where should we check if it has alreaddy been tagged? 
+            }
+        }
+        else {
+            Err(AutoTagErr::MissingAttribute)
+        }
+    }
+}
+
+struct ModifiedDateTagger {}
+
+impl Tagger for ModifiedDateTagger {
+    fn generate_tag(
+        &mut self,
+        workspace_id: WorkspaceId,
+        file: FileSummary,
+        tag_manager: Arc<RwLock<TagManager>>,
+        priority: Option<u64>,
+        parent: Option<TagId>,
+    ) -> Result<Option<TagRef>, AutoTagErr> {
+        if let Some(modified) = file.metadata.modified {
+            let mut manager = tag_manager.write().map_err(|_| AutoTagErr::ManagerLockError)?;
+            let tag = manager.get_tag(
+                workspace_id,
+                &modified.format("%Y-%m-%d").to_string(),
+                priority.unwrap_or(u64::MAX),
+                parent,
+            );
+            match tag {
+                Ok(tag_ref) => Ok(Some(tag_ref)),
+                Err(TagErr::ParentMissing(_)) => Err(AutoTagErr::ParentMissing),
+                Err(TagErr::InconsistentTagManager(_)) => Err(AutoTagErr::InconsistentTagManager),
+                Err(TagErr::TagMissing(_)) => todo!(),
+                Err(TagErr::DuplicateTag(_)) => Ok(None), // File already tagged (or duplicate tag) //[!] Where should we check if it has alreaddy been tagged? 
+            }
+        }
+        else {
+            Err(AutoTagErr::MissingAttribute)
+        }
+    }
+    
+}
+
+
+//[#] Tag 
 
 #[derive(Debug, Eq, PartialOrd, PartialEq, Ord, Hash, Default)]
 pub struct Tag {
@@ -68,14 +192,49 @@ impl Ord for TagRef {
 impl Eq for TagRef {}
 
 //[#] We require a tag manmager
+#[derive(Debug)]
 pub struct TagManager {
     pub tags: HashMap<(TagId, WorkspaceId), TagRef>, // Global Tags have Workspace_ID = 0
+    pub lookup: HashMap<(String, WorkspaceId), TagId>, // Used by Taggers, mostly
 }
 
 impl TagManager {
     pub fn new() -> Self {
         TagManager {
             tags: HashMap::new(),
+            lookup: HashMap::new(),
+        }
+    }
+
+    pub fn get_tag(
+        &mut self,
+        workspace_id: WorkspaceId,
+        name: &str,
+        priority: u64,
+        parent: Option<TagId>,
+    ) -> Result<TagRef, TagErr> {
+        let id = self.lookup.get(&(name.to_string(), workspace_id.clone()));
+        if let Some(id) = id {
+            let key = (id.clone(), workspace_id.clone());
+            let tag_ref = self.tags.get(&key).cloned();
+            if tag_ref.is_some() {
+                Ok(tag_ref.unwrap())
+            } else {
+                Err(TagErr::InconsistentTagManager(key))
+            }
+        } else {
+            let tag_id = self.create_tag(name, workspace_id, priority, parent);
+            if tag_id.is_ok() {
+                let key = (tag_id.unwrap(), workspace_id.clone());
+                let tag_ref = self.tags.get(&key).cloned();
+                if tag_ref.is_some() {
+                    Ok(tag_ref.unwrap())
+                } else {
+                Err(TagErr::InconsistentTagManager(key))
+                }
+            } else {
+                Err(tag_id.err().unwrap())
+            }
         }
     }
 
@@ -118,6 +277,9 @@ impl TagManager {
                 break id;
             }
         };
+        if self.lookup.contains_key(&(name.to_string(), workspace_id.clone())) {
+            return Err(TagErr::DuplicateTag((name.to_string(), workspace_id.clone())));
+        }
         let parent = match parent {
             Some(p) => Some(
                 self.tags
@@ -139,6 +301,10 @@ impl TagManager {
                 tag_ref: Arc::new(RwLock::new(tag)),
             },
         );
+        self.lookup.insert(
+            (name.to_string(), workspace_id.clone()),
+            id.clone(),
+        );
         Ok(id)
     }
 
@@ -153,7 +319,10 @@ impl TagManager {
     }
 }
 
+#[derive(Debug)]
 pub enum TagErr {
     TagMissing(Vec<TagId>),
     ParentMissing(TagId),
+    DuplicateTag((String, WorkspaceId)),
+    InconsistentTagManager((TagId, WorkspaceId)),
 }
