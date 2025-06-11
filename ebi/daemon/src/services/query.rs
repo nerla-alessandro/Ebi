@@ -1,4 +1,4 @@
-use crate::query::{FileOrder, OrderedFileID, Query, RetrieveErr, RetrieveService};
+use crate::query::{FileOrder, OrderedFileSummary, Query, RetrieveErr, RetrieveService};
 use crate::services::cache::CacheService;
 use crate::services::peer::PeerService;
 use crate::tag::TagId;
@@ -34,11 +34,11 @@ impl RetrieveService for Retrieve {
         &self,
         _workspace_id: WorkspaceId,
         _tag_id: TagId,
-    ) -> Result<BTreeSet<OrderedFileID<T>>, RetrieveErr> {
+    ) -> Result<BTreeSet<OrderedFileSummary<T>>, RetrieveErr> {
         todo!();
     }
 
-    async fn get_all<T: FileOrder>(&self) -> Result<BTreeSet<OrderedFileID<T>>, RetrieveErr> {
+    async fn get_all<T: FileOrder>(&self) -> Result<BTreeSet<OrderedFileSummary<T>>, RetrieveErr> {
         todo!();
     }
 }
@@ -53,7 +53,7 @@ struct Request<'a, FileOrd: FileOrder> {
 
 impl<'b, FileOrd: Clone + FileOrder + Send> Service<Request<'b, FileOrd>> for QueryService
 where
-    OrderedFileID<FileOrd>: Ord,
+    OrderedFileSummary<FileOrd>: Ord,
     &'b FileOrd: Send,
 {
     type Response = ();
