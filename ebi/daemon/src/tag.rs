@@ -55,7 +55,7 @@ impl Tagger for ExtensionTagger {
                 Err(TagErr::ParentMissing(_)) => Err(AutoTagErr::ParentMissing),
                 Err(TagErr::InconsistentTagManager(_)) => Err(AutoTagErr::InconsistentTagManager),
                 Err(TagErr::TagMissing(_)) => todo!(),
-                Err(TagErr::DuplicateTag(_)) => Ok(None), // File already tagged (or duplicate tag) //[!] Where should we check if it has alreaddy been tagged? 
+                Err(TagErr::DuplicateTag(_)) => Ok(None), // File already tagged (or duplicate tag) //[!] Where should we check if it has already been tagged? 
             }
         }
         else {

@@ -1,6 +1,6 @@
 use iroh::NodeId;
 
-use crate::shelf::file::FileMetadata;
+use crate::shelf::file::{FileMetadata, FileSummary};
 use crate::tag::{TagErr, TagId, TagManager};
 use crate::workspace::WorkspaceId;
 use std::collections::{BTreeSet, HashSet};
@@ -275,24 +275,6 @@ impl PartialOrd for OrderedFileSummary<Unordered> {
 impl Ord for OrderedFileSummary<Unordered> {
     fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
         std::cmp::Ordering::Equal
-    }
-}
-
-#[derive(Debug, Clone)]
-struct FileSummary {
-    root: Option<NodeId>, // Whether the file is local or remote
-    path: PathBuf,
-    metadata: FileMetadata,
-    //[?] Icon/Preview ?? 
-}
-
-impl FileSummary {
-    fn new(root: Option<NodeId>, path: PathBuf, metadata: FileMetadata) -> Self {
-        FileSummary {
-            root,
-            path,
-            metadata,
-        }
     }
 }
 
