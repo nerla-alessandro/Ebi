@@ -1,6 +1,5 @@
 use crate::query::{FileOrder, OrderedFileSummary};
 use crate::services::peer::PeerService;
-use crate::tag::TagManager;
 use crate::tag::TagRef;
 use crate::workspace::{Workspace, WorkspaceId};
 use std::collections::{BTreeSet, HashMap};
@@ -17,7 +16,6 @@ use tower::Service;
 #[derive(Clone)]
 pub struct CacheService {
     peer_service: PeerService,
-    tag_manager: Arc<RwLock<TagManager>>,
     workspaces: Arc<RwLock<HashMap<WorkspaceId, Workspace>>>,
 }
 
