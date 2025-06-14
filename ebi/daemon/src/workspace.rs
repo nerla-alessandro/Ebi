@@ -47,6 +47,15 @@ impl Workspace {
         false
     }
 
+    pub async fn attach_autotagger(&mut self, tagger: Autotagger) -> () {
+        self.auto_taggers.push(tagger);
+        let mut shelf_manager = self.shelf_manager.write().await;
+        for shelf in self.local_shelves.values_mut() {
+            let shelf = shelf_manager.shelves.get_mut(&shelf.id).unwrap();
+            shelf.write().await.apply(self.id, &mut self.auto_taggers.last_mut().unwrap()).await;
+        }
+    }
+
     pub async fn add_shelf(
         &mut self,
         id: ShelfId,
