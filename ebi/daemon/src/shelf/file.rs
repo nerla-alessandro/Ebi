@@ -1,5 +1,6 @@
 use crate::tag::TagRef;
 use chrono::{DateTime, Utc};
+use iroh::NodeId;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 #[cfg(unix)]
@@ -8,6 +9,36 @@ use std::os::unix::fs::MetadataExt;
 use std::os::windows::fs::MetadataExt;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+
+#[derive(Debug, Clone)]
+pub struct FileSummary {
+    pub file_ref: FileRef,
+    pub root: Option<NodeId>, // Whether the file is local or remote
+    pub path: PathBuf,
+    pub metadata: FileMetadata,
+    //[?] Icon/Preview ??
+}
+
+impl FileSummary {
+    fn new(file_ref: FileRef, root: Option<NodeId>, path: PathBuf, metadata: FileMetadata) -> Self {
+        FileSummary {
+            file_ref,
+            root,
+            path,
+            metadata,
+        }
+    }
+
+    pub fn summary(file_ref: FileRef) -> FileSummary {
+        let file = file_ref.file_ref.read().unwrap();
+        FileSummary::new(
+            file_ref.clone(),
+            None, // Can only be used if you have a FileRef, therefore the file is local
+            file.path.clone(),
+            file.metadata.clone(),
+        )
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct FileRef {
