@@ -1,5 +1,6 @@
 use crate::services::peer::PeerService;
-use crate::shelf::shelf::{ShelfId, ShelfInfo, ShelfManager, UpdateErr};
+use crate::shelf::shelf::{ShelfId, ShelfManager, UpdateErr};
+use crate::tag::TagErr;
 use crate::tag::{TagId, TagManager};
 use crate::workspace::{Workspace, WorkspaceId};
 use ebi_proto::rpc::*;
@@ -8,7 +9,6 @@ use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
-use crate::tag::TagErr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::RwLock;
@@ -1062,17 +1062,27 @@ impl Service<AddShelf> for RpcService {
                     let path = PathBuf::from(req.path.clone());
                     let shelf_id_res = shelf_manager.write().await.add_shelf(path.clone());
                     match shelf_id_res {
+                        //[!] Shelf should be added via the Workspace to apply AutoTaggers
                         Ok(id) => {
                             workspaces
                                 .write()
                                 .await
                                 .get_mut(&workspace_id)
                                 .unwrap()
-                                .local_shelves
-                                .insert(
+                                .add_shelf(
                                     id,
-                                    ShelfInfo::new(id, req.name, req.description, req.path),
-                                );
+                                    req.name.unwrap_or_else(|| {
+                                        PathBuf::from(req.path.clone())
+                                            .components()
+                                            .last()
+                                            .and_then(|comp| comp.as_os_str().to_str())
+                                            .unwrap_or_default()
+                                            .to_string()
+                                    }),
+                                    req.description.unwrap_or_else(|| "".to_string()),
+                                    req.path.into(),
+                                )
+                                .await;
 
                             shelf_id = Some(id);
                             ReturnCode::Success
@@ -1608,6 +1618,7 @@ impl Service<CreateWorkspace> for RpcService {
         let workspaces = self.workspaces.clone();
         let metadata = req.metadata.unwrap();
         let notify_queue = self.notify_queue.clone();
+        let shelf_manager = self.shelf_manager.clone();
         Box::pin(async move {
             let mut id: WorkspaceId;
             loop {
@@ -1631,6 +1642,8 @@ impl Service<CreateWorkspace> for RpcService {
                 description: req.description,
                 local_shelves: HashMap::new(), // Placeholder for local shelves
                 remote_shelves: HashMap::new(), // Placeholder for remote shelves
+                auto_taggers: Vec::new(),      // Placeholder for auto taggers
+                shelf_manager: shelf_manager.clone(),
             };
             workspaces.write().await.insert(id, workspace);
 
@@ -1759,7 +1772,7 @@ impl Service<CreateTag> for RpcService {
                         TagErr::DuplicateTag(_) => ReturnCode::DuplicateTag, // Tag name already exists
                         TagErr::ParentMissing(_) => ReturnCode::ParentNotFound, // Parent tag does not exist
                         TagErr::InconsistentTagManager(_) => ReturnCode::InternalStateError, // Inconsistent tag manager state
-                        TagErr::TagMissing(_) => todo!() //[!] Fix unreachable errors in Error Enums
+                        TagErr::TagMissing(_) => todo!(), //[!] Fix unreachable errors in Error Enums
                     };
                     // If there was an error creating the tag, return an error response
                     let metadata = ResponseMetadata {

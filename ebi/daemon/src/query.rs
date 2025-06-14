@@ -1,10 +1,7 @@
-use iroh::NodeId;
-
-use crate::shelf::file::{FileMetadata, FileSummary};
+use crate::shelf::file::FileSummary;
 use crate::tag::{TagErr, TagId, TagManager};
 use crate::workspace::WorkspaceId;
 use std::collections::{BTreeSet, HashSet};
-use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 #[derive(Debug)]
@@ -164,13 +161,21 @@ impl Eq for OrderedFileSummary<Size> {}
 
 impl PartialOrd for OrderedFileSummary<Size> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.file_summary.metadata.size.cmp(&other.file_summary.metadata.size))
+        Some(
+            self.file_summary
+                .metadata
+                .size
+                .cmp(&other.file_summary.metadata.size),
+        )
     }
 }
 
 impl Ord for OrderedFileSummary<Size> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.file_summary.metadata.size.cmp(&other.file_summary.metadata.size)
+        self.file_summary
+            .metadata
+            .size
+            .cmp(&other.file_summary.metadata.size)
     }
 }
 
@@ -300,7 +305,7 @@ impl<T: FileOrder + Clone> Query<T> {
         self.formula.get_tags()
     }
 
-    //[!] Should be executed inside the QueryService 
+    //[!] Should be executed inside the QueryService
     pub fn validate<R>(
         &mut self,
         workspace_id: WorkspaceId,
@@ -375,7 +380,8 @@ impl<T: FileOrder + Clone> Query<T> {
                     .await?;
                 let b = Query::recursive_evaluate(*y.clone(), workspace_id, ret_service.clone())
                     .await?;
-                let x: BTreeSet<OrderedFileSummary<T>> = a.symmetric_difference(&b).cloned().collect();
+                let x: BTreeSet<OrderedFileSummary<T>> =
+                    a.symmetric_difference(&b).cloned().collect();
                 Ok(x)
             }
             Formula::UnaryExpression(UnaryOp::NOT, x) => {

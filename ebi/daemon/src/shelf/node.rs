@@ -1,5 +1,6 @@
-use crate::shelf::file::{File, FileMetadata, FileRef};
-use crate::tag::TagRef;
+use crate::shelf::file::{File, FileMetadata, FileRef, FileSummary};
+use crate::tag::{Autotagger, TagRef};
+use crate::workspace::WorkspaceId;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io;
 use std::path::PathBuf;
@@ -82,6 +83,22 @@ impl Node {
                 }
             }
             None => self.tags.remove(&tag).is_some(),
+        }
+    }
+
+    pub async fn apply(&mut self, workspace_id: WorkspaceId, tagger: &mut Autotagger) -> () {
+        let files = self.files.clone();
+        for (_, file) in files {
+            let tag = tagger
+                .generate_tag(workspace_id, FileSummary::summary(file.clone()))
+                .await;
+            if let Ok(tag) = tag {
+                if let Some(tag) = tag {
+                    self.attach(tag, file.clone());
+                }
+            } else {
+                //[+] Log Error
+            }
         }
     }
 }

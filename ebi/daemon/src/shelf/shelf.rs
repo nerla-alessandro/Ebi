@@ -1,5 +1,6 @@
 use crate::shelf::node::Node;
-use crate::tag::TagRef;
+use crate::tag::{Autotagger, TagRef};
+use crate::workspace::WorkspaceId;
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsStr;
 use std::io;
@@ -59,7 +60,7 @@ impl ShelfManager {
             count: HashMap::new(),
             paths: HashMap::new(),
         }
-        //[!] Run automatic tagging on all files in the shelf 
+        //[!] Run automatic tagging on all files in the shelf
     }
 
     pub fn add_shelf(&mut self, path: PathBuf) -> Result<ShelfId, io::Error> {
@@ -137,9 +138,13 @@ impl Shelf {
         self.root.tags.contains_key(&tag) || self.root.dtag_files.contains_key(&tag)
     }
 
+    pub async fn apply(&mut self, workspace_id: WorkspaceId, tagger: &mut Autotagger) -> () {
+        self.root.apply(workspace_id, tagger).await;
+    }
+
     pub async fn refresh(&self) -> Result<bool, io::Error> {
         todo!();
-        //[!] Run automatic tagging on all new or modified files in the shelf 
+        //[!] Run automatic tagging on all new or modified files in the shelf
     }
 
     pub fn attach(&mut self, path: PathBuf, tag: TagRef) -> Result<bool, UpdateErr> {
