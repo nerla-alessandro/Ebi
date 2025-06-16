@@ -56,6 +56,74 @@ macro_rules! impl_req_metadata {
 
 include!(concat!(env!("OUT_DIR"), "/ebi.rpc.rs"));
 
+#[derive(PartialEq, Eq)]
+pub enum ReturnCode {
+    ParseError = -1,
+    Success = 0,
+    PeerNotFound = 1,
+    TagNotFound = 2,
+    WorkspaceNotFound = 3,
+    ShelfNotFound = 4,
+    PathNotFound = 5,
+    FileNotFound = 6,
+    InternalStateError = 7,
+    PeerServiceError = 10,
+    DuplicateTag = 201,
+    ParentNotFound = 202,
+    TagAlreadyAttached = 203,
+    NotTagged = 204,
+    TagNameEmpty = 205,
+    WorkspaceNameEmpty = 304,
+    ShelfCreationIOError = 501,
+    PathNotDir = 502,
+}
+
+pub fn parse_code(code: u32) -> ReturnCode {
+    match code {
+        0 => ReturnCode::Success,
+        1 => ReturnCode::PeerNotFound,
+        2 => ReturnCode::TagNotFound,
+        3 => ReturnCode::WorkspaceNotFound,
+        4 => ReturnCode::ShelfNotFound,
+        5 => ReturnCode::PathNotFound,
+        6 => ReturnCode::FileNotFound,
+        7 => ReturnCode::InternalStateError,
+        10 => ReturnCode::PeerServiceError,
+        201 => ReturnCode::DuplicateTag,
+        202 => ReturnCode::ParentNotFound,
+        203 => ReturnCode::TagAlreadyAttached,
+        204 => ReturnCode::NotTagged,
+        205 => ReturnCode::TagNameEmpty,
+        304 => ReturnCode::WorkspaceNameEmpty,
+        501 => ReturnCode::ShelfCreationIOError,
+        _ => ReturnCode::ParseError,
+    }
+}
+impl ReturnCode {
+    pub fn to_u32(code: ReturnCode) -> u32 {
+        match code {
+            ReturnCode::ParseError => u32::MAX,
+            ReturnCode::Success => 0,
+            ReturnCode::PeerNotFound => 1,
+            ReturnCode::TagNotFound => 2,
+            ReturnCode::WorkspaceNotFound => 3,
+            ReturnCode::ShelfNotFound => 4,
+            ReturnCode::PathNotFound => 5,
+            ReturnCode::FileNotFound => 6,
+            ReturnCode::InternalStateError => 7,
+            ReturnCode::PeerServiceError => 10,
+            ReturnCode::DuplicateTag => 201,
+            ReturnCode::ParentNotFound => 202,
+            ReturnCode::TagAlreadyAttached => 203,
+            ReturnCode::NotTagged => 204,
+            ReturnCode::TagNameEmpty => 205,
+            ReturnCode::WorkspaceNameEmpty => 304,
+            ReturnCode::ShelfCreationIOError => 501,
+            ReturnCode::PathNotDir => 502,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum MessageType {
     Request = 1,

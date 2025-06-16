@@ -1,7 +1,9 @@
-use crate::query::{FileOrder, OrderedFileID, Query, RetrieveErr, RetrieveService};
+use crate::query::{FileOrder, OrderedFileSummary, Query, RetrieveErr, RetrieveService};
 use crate::services::cache::CacheService;
 use crate::services::peer::PeerService;
+use crate::tag::TagId;
 use crate::workspace::WorkspaceId;
+use iroh::NodeId;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::{
@@ -30,12 +32,13 @@ struct Retrieve {
 impl RetrieveService for Retrieve {
     async fn get_files<T: FileOrder>(
         &self,
-        _uuid: (u64, u64),
-    ) -> Result<BTreeSet<OrderedFileID<T>>, RetrieveErr> {
+        _workspace_id: WorkspaceId,
+        _tag_id: TagId,
+    ) -> Result<BTreeSet<OrderedFileSummary<T>>, RetrieveErr> {
         todo!();
     }
 
-    async fn get_all<T: FileOrder>(&self) -> Result<BTreeSet<OrderedFileID<T>>, RetrieveErr> {
+    async fn get_all<T: FileOrder>(&self) -> Result<BTreeSet<OrderedFileSummary<T>>, RetrieveErr> {
         todo!();
     }
 }
@@ -45,12 +48,12 @@ struct Request<'a, FileOrd: FileOrder> {
     ord: &'a FileOrd,
     workspace_id: WorkspaceId,
     partial: bool,
-    client_id: u64,
+    client_id: NodeId,
 }
 
 impl<'b, FileOrd: Clone + FileOrder + Send> Service<Request<'b, FileOrd>> for QueryService
 where
-    OrderedFileID<FileOrd>: Ord,
+    OrderedFileSummary<FileOrd>: Ord,
     &'b FileOrd: Send,
 {
     type Response = ();
