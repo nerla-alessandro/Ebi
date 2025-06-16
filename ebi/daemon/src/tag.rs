@@ -229,9 +229,9 @@ impl TagManager {
         priority: u64,
         parent: Option<TagId>,
     ) -> Result<TagRef, TagErr> {
-        let id = self.lookup.get(&(name.to_string(), workspace_id.clone()));
+        let id = self.lookup.get(&(name.to_string(), workspace_id));
         if let Some(id) = id {
-            let key = (id.clone(), workspace_id.clone());
+            let key = (*id, workspace_id);
             let tag_ref = self.tags.get(&key).cloned();
             if tag_ref.is_some() {
                 Ok(tag_ref.unwrap())

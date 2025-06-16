@@ -28,11 +28,13 @@ impl FileSummary {
             metadata,
         }
     }
+}
 
-    pub fn summary(file_ref: FileRef) -> FileSummary {
-        let file = file_ref.file_ref.read().unwrap();
+impl From<FileRef> for FileSummary {
+    fn from(value: FileRef) -> Self {
+        let file = value.file_ref.read().unwrap();
         FileSummary::new(
-            file_ref.clone(),
+            value.clone(),
             None, // Can only be used if you have a FileRef, therefore the file is local
             file.path.clone(),
             file.metadata.clone(),

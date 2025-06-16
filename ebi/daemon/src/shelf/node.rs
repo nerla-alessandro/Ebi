@@ -90,7 +90,7 @@ impl Node {
         let files = self.files.clone();
         for (_, file) in files {
             let tag = tagger
-                .generate_tag(workspace_id, FileSummary::summary(file.clone()))
+                .generate_tag(workspace_id, FileSummary::from(file.clone()))
                 .await;
             if let Ok(tag) = tag {
                 if let Some(tag) = tag {
