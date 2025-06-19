@@ -1,8 +1,7 @@
 use crate::services::peer::PeerService;
 use crate::shelf::shelf::{ShelfId, ShelfManager, UpdateErr};
-use crate::tag::TagErr;
-use crate::tag::{TagId, TagManager};
-use crate::workspace::{Workspace, WorkspaceId};
+use crate::tag::TagId;
+use crate::workspace::{Workspace, WorkspaceId, TagErr};
 use ebi_proto::rpc::*;
 use iroh::NodeId;
 use std::collections::{HashMap, VecDeque};
@@ -75,7 +74,6 @@ pub struct RpcService {
     pub daemon_info: Arc<DaemonInfo>,
     pub peer_service: PeerService,
     pub tasks: Arc<HashMap<TaskID, JoinHandle<()>>>,
-    pub tag_manager: Arc<RwLock<TagManager>>,
     pub shelf_manager: Arc<RwLock<ShelfManager>>,
     pub workspaces: Arc<RwLock<HashMap<WorkspaceId, Workspace>>>,
     pub responses: Arc<RwLock<HashMap<RequestId, Response>>>,
@@ -156,7 +154,6 @@ impl Service<DeleteTag> for RpcService {
     }
 
     fn call(&mut self, req: DeleteTag) -> Self::Future {
-        let tag_manager = self.tag_manager.clone();
         let metadata = req.metadata.clone().unwrap();
         let notify_queue = self.notify_queue.clone();
         let shelf_manager = self.shelf_manager.clone();
@@ -184,9 +181,8 @@ impl Service<DeleteTag> for RpcService {
 
             //[/] Business Logic
             {
-                let tag_manager_r = tag_manager.read().await;
                 let workspaces_r = workspaces.read().await;
-                let tag = tag_manager_r.tags.get(&(tag_id, workspace_id)).unwrap();
+                let tag = workspaces.read().await.get(&workspace_id).unwrap().tags.get(&tag_id).unwrap();
                 let workspace = workspaces_r.get(&workspace_id).unwrap();
                 for (_, shelf_info) in workspace.local_shelves.iter() {
                     let shelf_manager_r = shelf_manager.read().await;
@@ -208,11 +204,7 @@ impl Service<DeleteTag> for RpcService {
                     }
                 }
             } // Tag_manager read lock goes out of scope before requesting write
-            tag_manager
-                .write()
-                .await
-                .tags
-                .retain(|id, _| !(id == &(tag_id, workspace_id)));
+            workspaces.write().await.get(&workspace_id).unwrap().tags.remove(&tag_id);
 
             notify_queue.write().await.push_back({
                 Notification::Operation(Operation {
@@ -244,7 +236,6 @@ impl Service<StripTag> for RpcService {
     }
 
     fn call(&mut self, req: StripTag) -> Self::Future {
-        let tag_manager = self.tag_manager.clone();
         let metadata = req.metadata.clone().unwrap();
         let notify_queue = self.notify_queue.clone();
         let shelf_manager = self.shelf_manager.clone();
@@ -296,8 +287,7 @@ impl Service<StripTag> for RpcService {
                         ReturnCode::ShelfNotFound // Shelf not Found
                     }
                 } else {
-                    let tag_manager_w = tag_manager.write().await;
-                    let tag_ref = tag_manager_w.tags.get(&(tag_id, workspace_id)).unwrap();
+                    let tag_ref = workspaces.write().await.get(&workspace_id).unwrap().tags.get(&tag_id).unwrap();
                     // we can unwrap because we checked that the shelf existed
                     let shelf_manager_r = shelf_manager.read().await;
                     let mut shelf = shelf_manager_r
@@ -348,7 +338,6 @@ impl Service<DetachTag> for RpcService {
     }
 
     fn call(&mut self, req: DetachTag) -> Self::Future {
-        let tag_manager = self.tag_manager.clone();
         let metadata = req.metadata.clone().unwrap();
         let notify_queue = self.notify_queue.clone();
         let shelf_manager = self.shelf_manager.clone();
@@ -396,11 +385,8 @@ impl Service<DetachTag> for RpcService {
                         Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service
                     }
                 } else {
-                    let tag_ref = tag_manager
-                        .write()
-                        .await
-                        .tags
-                        .get(&(tag_id, workspace_id))
+                    let tag_ref = workspaces.read().await.get(&workspace_id).unwrap().tags
+                        .get(&tag_id)
                         .unwrap()
                         .clone();
 
@@ -461,7 +447,6 @@ impl Service<AttachTag> for RpcService {
     }
 
     fn call(&mut self, req: AttachTag) -> Self::Future {
-        let tag_manager = self.tag_manager.clone();
         let metadata = req.metadata.clone().unwrap();
         let notify_queue = self.notify_queue.clone();
         let shelf_manager = self.shelf_manager.clone();
@@ -508,11 +493,8 @@ impl Service<AttachTag> for RpcService {
                         Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service
                     }
                 } else {
-                    let tag_ref = tag_manager
-                        .write()
-                        .await
-                        .tags
-                        .get(&(tag_id, workspace_id))
+                    let tag_ref = workspaces.read().await.get(&workspace_id).unwrap().tags
+                        .get(&tag_id)
                         .unwrap()
                         .clone();
 
@@ -868,7 +850,6 @@ impl Service<DeleteWorkspace> for RpcService {
     fn call(&mut self, req: DeleteWorkspace) -> Self::Future {
         let workspaces = self.workspaces.clone();
         let metadata = req.metadata.unwrap();
-        let tag_manager = self.tag_manager.clone();
         let shelf_manager = self.shelf_manager.clone();
         let notify_queue = self.notify_queue.clone();
         Box::pin(async move {
@@ -885,17 +866,6 @@ impl Service<DeleteWorkspace> for RpcService {
 
             //[/] Business Logic
             let return_code = {
-                let tag_rm: Vec<(TagId, WorkspaceId)> = tag_manager
-                    .write()
-                    .await
-                    .tags
-                    .keys()
-                    .filter(|(_, ws_id)| *ws_id == workspace_id)
-                    .cloned()
-                    .collect();
-                for key in tag_rm {
-                    tag_manager.write().await.tags.remove(&key);
-                }
                 let mut shelves: Vec<ShelfId> = Vec::new();
                 for (id, _) in workspaces
                     .read()
@@ -946,7 +916,6 @@ impl Service<EditTag> for RpcService {
 
     fn call(&mut self, req: EditTag) -> Self::Future {
         let workspaces = self.workspaces.clone();
-        let tag_manager = self.tag_manager.clone();
         let metadata = req.metadata.unwrap();
         let notify_queue = self.notify_queue.clone();
         Box::pin(async move {
@@ -975,11 +944,9 @@ impl Service<EditTag> for RpcService {
             //[?] Inconsistent: Unwrap and validate here or in TagManager ??
             if let Some(id) = req.parent_id.clone() {
                 if let Ok(id) = uuid(id.clone()) {
-                    if tag_manager
-                        .read()
-                        .await
+                    if workspaces.read().await.get(&workspace_id).unwrap()
                         .tags
-                        .contains_key(&(id, workspace_id))
+                        .contains_key(&id)
                     {
                         parent_id = Some(id);
                     } else {
@@ -1012,17 +979,14 @@ impl Service<EditTag> for RpcService {
 
             //[/] Business Logic
             let return_code = {
-                let mut tag_manager_w = tag_manager.write().await;
-                let tag = tag_manager_w.tags.get_mut(&(tag_id, workspace_id)).unwrap();
+                let tag = workspaces.read().await.get(&workspace_id).unwrap().tags.get_mut(&tag_id).unwrap();
                 tag.tag_ref.write().unwrap().name = req.name.clone();
                 tag.tag_ref.write().unwrap().priority = req.priority;
                 if req.parent_id.is_some() {
                     tag.tag_ref.write().unwrap().parent = Some(
-                        tag_manager
-                            .read()
-                            .await
+                        workspaces.read().await.get(&workspace_id).unwrap()
                             .tags
-                            .get(&(parent_id.unwrap(), workspace_id))
+                            .get(&parent_id.unwrap())
                             .unwrap()
                             .clone(),
                     );
@@ -1191,12 +1155,11 @@ impl Service<GetWorkspaces> for RpcService {
     fn call(&mut self, req: GetWorkspaces) -> Self::Future {
         let workspaces = self.workspaces.clone();
         let metadata = req.metadata.unwrap();
-        let tag_manager = self.tag_manager.clone();
         Box::pin(async move {
             let mut workspace_ls = Vec::new();
             for (_, workspace) in workspaces.read().await.iter() {
                 let mut tag_ls = Vec::new();
-                for tag_ref in tag_manager.write().await.get_tags(workspace.id) {
+                for tag_ref in workspace.tags.values() {
                     let tag = tag_ref.tag_ref.read().unwrap();
                     let tag_id = tag.id;
                     let name = tag.name.clone();
@@ -1273,6 +1236,8 @@ impl Service<CreateWorkspace> for RpcService {
                 remote_shelves: HashMap::new(), // Placeholder for remote shelves
                 auto_taggers: Vec::new(),      // Placeholder for auto taggers
                 shelf_manager: shelf_manager.clone(),
+                tags: HashMap::new(),
+                lookup: HashMap::new(),
             };
             workspaces.write().await.insert(id, workspace);
 
@@ -1299,7 +1264,6 @@ impl Service<CreateTag> for RpcService {
     }
 
     fn call(&mut self, req: CreateTag) -> Self::Future {
-        let tag_manager = self.tag_manager.clone();
         let workspaces = self.workspaces.clone();
         let notify_queue = self.notify_queue.clone();
         let metadata = req.metadata.clone().unwrap();
@@ -1321,11 +1285,9 @@ impl Service<CreateTag> for RpcService {
             //[?] Inconsistent: Unwrap and validate here or in TagManager ??
             if let Some(id) = req.parent_id.clone() {
                 if let Ok(id) = uuid(id.clone()) {
-                    if tag_manager
-                        .read()
-                        .await
+                    if workspaces.read().await.get(&workspace_id).unwrap()
                         .tags
-                        .contains_key(&(id, workspace_id))
+                        .contains_key(&id)
                     {
                         parent_id = Some(id);
                     } else {
@@ -1351,9 +1313,8 @@ impl Service<CreateTag> for RpcService {
             }
 
             // Create the tag using the tag manager
-            let id = tag_manager.write().await.create_tag(
+            let id = workspaces.write().await.get_mut(&workspace_id).unwrap().create_tag(
                 &req.name,
-                workspace_id,
                 req.priority,
                 parent_id,
             );

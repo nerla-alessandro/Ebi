@@ -99,7 +99,6 @@ async fn main() -> Result<()> {
     let peers = Arc::new(RwLock::new(HashMap::<NodeId, Peer>::new()));
     let clients = Arc::new(RwLock::new(Vec::<Client>::new()));
     let tasks = Arc::new(HashMap::<TaskID, JoinHandle<()>>::new());
-    let tag_manager = Arc::new(RwLock::new(tag::TagManager::new()));
     let shelf_manager = Arc::new(RwLock::new(ShelfManager::new()));
     let workspaces = Arc::new(RwLock::new(HashMap::<
         workspace::WorkspaceId,
@@ -122,7 +121,6 @@ async fn main() -> Result<()> {
         responses: responses.clone(),
         notify_queue: notify_queue.clone(),
         tasks: tasks.clone(),
-        tag_manager: tag_manager.clone(),
         shelf_manager: shelf_manager.clone(),
         workspaces: workspaces.clone(),
         broadcast: broadcast.clone(),

@@ -1,6 +1,6 @@
 use crate::shelf::node::Node;
 use crate::tag::{Autotagger, TagRef};
-use crate::workspace::WorkspaceId;
+use crate::workspace::{WorkspaceId, ChangeSummary};
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsStr;
 use std::io;
@@ -142,7 +142,7 @@ impl Shelf {
         self.root.apply(workspace_id, tagger).await;
     }
 
-    pub async fn refresh(&self) -> Result<bool, io::Error> {
+    pub async fn refresh(&self) -> Result<ChangeSummary, io::Error> {
         todo!();
         //[!] Run automatic tagging on all new or modified files in the shelf
     }

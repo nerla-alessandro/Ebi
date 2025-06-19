@@ -100,5 +100,9 @@ impl Node {
                 //[+] Log Error
             }
         }
+        let dirs = self.directories.clone();
+        for (_, node) in dirs {
+            node.apply(workspace_id, tagger).await;
+        }
     }
 }

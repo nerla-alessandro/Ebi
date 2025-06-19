@@ -1,6 +1,6 @@
 use crate::shelf::file::FileSummary;
-use crate::tag::{TagErr, TagId, TagManager};
-use crate::workspace::WorkspaceId;
+use crate::tag::TagId;
+use crate::workspace::{TagErr, WorkspaceId};
 use std::collections::{BTreeSet, HashSet};
 use std::sync::{Arc, RwLock};
 
@@ -305,15 +305,7 @@ impl<T: FileOrder + Clone> Query<T> {
         self.formula.get_tags()
     }
 
-    //[!] Should be executed inside the QueryService
-    pub fn validate<R>(
-        &mut self,
-        workspace_id: WorkspaceId,
-        tag_manager: Arc<RwLock<TagManager>>,
-    ) -> Result<(), TagErr> {
-        let tag_set = self.formula.get_tags();
-        tag_manager.read().unwrap().validate(tag_set, workspace_id)
-    }
+    //[!] Tags should be Validated inside the QueryService
 
     pub async fn evaluate<R>(
         &mut self,
