@@ -1,6 +1,6 @@
 use crate::shelf::node::Node;
-use crate::tag::{Autotagger, TagRef};
-use crate::workspace::{WorkspaceId, ChangeSummary};
+use crate::tag::TagRef;
+use crate::workspace::{ChangeSummary, WorkspaceId};
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsStr;
 use std::io;
@@ -14,6 +14,7 @@ use super::file::FileRef;
 
 pub type ShelfId = Uuid;
 
+#[derive(Clone, Debug)]
 pub struct ShelfInfo {
     pub id: ShelfId,
     pub name: String,
@@ -136,10 +137,6 @@ impl Shelf {
 
     pub fn contains(&self, tag: TagRef) -> bool {
         self.root.tags.contains_key(&tag) || self.root.dtag_files.contains_key(&tag)
-    }
-
-    pub async fn apply(&mut self, workspace_id: WorkspaceId, tagger: &mut Autotagger) -> () {
-        self.root.apply(workspace_id, tagger).await;
     }
 
     pub async fn refresh(&self) -> Result<ChangeSummary, io::Error> {

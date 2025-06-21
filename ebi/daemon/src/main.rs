@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
     let shelf_manager = Arc::new(RwLock::new(ShelfManager::new()));
     let workspaces = Arc::new(RwLock::new(HashMap::<
         workspace::WorkspaceId,
-        workspace::Workspace,
+        workspace::WorkspaceRef,
     >::new()));
     let responses = Arc::new(RwLock::new(HashMap::<RequestId, Response>::new()));
     let notify_queue = Arc::new(RwLock::new(VecDeque::new()));

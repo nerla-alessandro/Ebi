@@ -21,24 +21,28 @@ pub enum AutoTagErr {
     InconsistentTagManager,
 }
 
+#[derive(Clone)]
 pub struct TagData {
     pub name: String,
     pub priority: u64,
     pub parent: Option<Box<TagData>>,
 }
 
-#[async_trait]
 pub trait Tagger {
     fn requires_data(&self) -> bool {
         false
     }
 
-    async fn generate_tag(&mut self, summary: FileSummary, data: Option<Vec<u8>>) -> Option<TagData>;
+    fn generate_tag(
+        &mut self,
+        summary: FileSummary,
+        data: Option<Vec<u8>>,
+    ) -> Option<TagData>;
 }
 
-pub type DynTagger = Pin<Box<dyn Tagger + Send + Sync>>;
+pub type DynTagger = Box<dyn Tagger + Send + Sync>;
 
-/* 
+/*
 pub struct Autotagger {
     pub wrapped_tagger: DynTagger,
     pub tag_manager: Arc<tokio::sync::RwLock<TagManager>>,
@@ -214,4 +218,3 @@ impl Ord for TagRef {
 }
 
 impl Eq for TagRef {}
-
