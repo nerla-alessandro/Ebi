@@ -1,6 +1,6 @@
 use crate::shelf::file::{FileRef, FileSummary};
 use crate::shelf::shelf::{ShelfId, Shelf, ShelfInfo};
-use crate::tag::{Tag, TagData, TagId, TagRef};
+use crate::tag::{Tag, TagData, TagId, TagRef, Tagger};
 use iroh::NodeId;
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
@@ -8,6 +8,8 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 pub type WorkspaceId = Uuid;
+
+type DynTagger = Box<dyn Tagger + Send + Sync>;
 
 pub type WorkspaceRef = Arc<RwLock<Workspace>>;
 
@@ -25,6 +27,7 @@ pub struct Workspace {
     // Tag Management
     pub tags: HashMap<TagId, TagRef>,
     pub lookup: HashMap<String, TagId>,
+    pub auto_taggers: Vec<DynTagger>,
 }
 
 impl Workspace {
@@ -53,6 +56,10 @@ impl Workspace {
             return true;
         }
         false
+    }
+
+    pub fn attach_autotagger(&mut self, tagger: DynTagger) -> () {
+        self.auto_taggers.push(tagger);
     }
 
     pub async fn add_shelf_info(
@@ -140,7 +147,41 @@ impl Workspace {
     }
 
     pub async fn refresh(&mut self, shelf: ShelfId, change: ChangeSummary) -> () {
-        todo!();
+        for file in change.added_files.into_iter().chain(change.modified_files) {
+            let tag_data: Vec<TagData> = self
+                .auto_taggers
+                .iter_mut()
+                .filter_map(|tagger| {
+                    if tagger.requires_data() {
+                        todo!();
+                    } else {
+                        tagger.generate_tag(FileSummary::from(file.clone()), None)
+                    }
+                })
+                .collect();
+            
+            fn recursive_tag_data(tag_data: TagData) -> Vec<TagData> {
+                let mut vec = Vec::new();
+                let tag_parent = tag_data.parent.clone();
+                vec.push(tag_data);
+                if let Some(parent) = tag_parent {
+                    vec.extend(recursive_tag_data(*parent))
+                }
+                vec
+            }
+
+            for tag in tag_data {
+                let tags = recursive_tag_data(tag);
+                let mut iter = tags.into_iter();
+                while let Some(tag) = iter.next() {
+                    let tag_ref = self.get_or_create(tag);
+                    if let Some(parent_tag) = iter.next() {
+                        tag_ref.tag_ref.write().unwrap().parent = Some(self.get_or_create(parent_tag));
+                    }
+                }
+            }
+            ()
+        }
     }
 
     // Private function to be used in refresh
