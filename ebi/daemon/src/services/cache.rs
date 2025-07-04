@@ -1,6 +1,5 @@
-use crate::query::{FileOrder, OrderedFileID};
+use crate::query::{FileOrder, OrderedFileSummary};
 use crate::services::peer::PeerService;
-use crate::tag::TagManager;
 use crate::tag::TagRef;
 use crate::workspace::{Workspace, WorkspaceId};
 use std::collections::{BTreeSet, HashMap};
@@ -17,7 +16,6 @@ use tower::Service;
 #[derive(Clone)]
 pub struct CacheService {
     peer_service: PeerService,
-    tag_manager: Arc<RwLock<TagManager>>,
     workspaces: Arc<RwLock<HashMap<WorkspaceId, Workspace>>>,
 }
 
@@ -43,7 +41,7 @@ struct HashCache {
 }
 
 enum CommandRes<T: FileOrder + Clone> {
-    OrderedFiles(BTreeSet<OrderedFileID<T>>),
+    OrderedFiles(BTreeSet<OrderedFileSummary<T>>),
 }
 
 enum CacheError {
@@ -51,7 +49,7 @@ enum CacheError {
 }
 
 impl<T: FileOrder + Clone> Service<RetrieveFiles<T>> for CacheService {
-    type Response = BTreeSet<OrderedFileID<T>>;
+    type Response = BTreeSet<OrderedFileSummary<T>>;
     type Error = CacheError;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
