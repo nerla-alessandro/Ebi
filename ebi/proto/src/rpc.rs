@@ -56,7 +56,7 @@ macro_rules! impl_req_metadata {
 
 include!(concat!(env!("OUT_DIR"), "/ebi.rpc.rs"));
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ReturnCode {
     ParseError = -1,
     Success = 0,
@@ -73,6 +73,7 @@ pub enum ReturnCode {
     TagAlreadyAttached = 203,
     NotTagged = 204,
     TagNameEmpty = 205,
+    TagNameDuplicate = 206,
     WorkspaceNameEmpty = 304,
     ShelfCreationIOError = 501,
     PathNotDir = 502,
@@ -94,6 +95,7 @@ pub fn parse_code(code: u32) -> ReturnCode {
         203 => ReturnCode::TagAlreadyAttached,
         204 => ReturnCode::NotTagged,
         205 => ReturnCode::TagNameEmpty,
+        206 => ReturnCode::TagNameDuplicate,
         304 => ReturnCode::WorkspaceNameEmpty,
         501 => ReturnCode::ShelfCreationIOError,
         _ => ReturnCode::ParseError,
@@ -117,6 +119,7 @@ impl ReturnCode {
             ReturnCode::TagAlreadyAttached => 203,
             ReturnCode::NotTagged => 204,
             ReturnCode::TagNameEmpty => 205,
+            ReturnCode::TagNameDuplicate => 206,
             ReturnCode::WorkspaceNameEmpty => 304,
             ReturnCode::ShelfCreationIOError => 501,
             ReturnCode::PathNotDir => 502,

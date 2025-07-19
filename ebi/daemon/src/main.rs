@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 use crate::services::peer::{Client, Peer, PeerService};
+use crate::services::workspace::WorkspaceService;
 use crate::services::rpc::{DaemonInfo, RequestId, RpcService, TaskID};
 use anyhow::Result;
 use ebi_proto::rpc::*;
 use iroh::{Endpoint, NodeId, SecretKey};
 use paste::paste;
-use shelf::shelf::ShelfManager;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -99,11 +99,6 @@ async fn main() -> Result<()> {
     let peers = Arc::new(RwLock::new(HashMap::<NodeId, Peer>::new()));
     let clients = Arc::new(RwLock::new(Vec::<Client>::new()));
     let tasks = Arc::new(HashMap::<TaskID, JoinHandle<()>>::new());
-    let shelf_manager = Arc::new(RwLock::new(ShelfManager::new()));
-    let workspaces = Arc::new(RwLock::new(HashMap::<
-        workspace::WorkspaceId,
-        workspace::WorkspaceRef,
-    >::new()));
     let responses = Arc::new(RwLock::new(HashMap::<RequestId, Response>::new()));
     let notify_queue = Arc::new(RwLock::new(VecDeque::new()));
     let id: NodeId = ep.node_id();
@@ -113,7 +108,7 @@ async fn main() -> Result<()> {
 
     let service = ServiceBuilder::new().service(RpcService {
         daemon_info: Arc::new(DaemonInfo::new(id, "".to_string())),
-        peer_service: PeerService {
+        peer_srv: PeerService {
             peers: peers.clone(),
             clients: clients.clone(),
             responses: responses.clone(),
@@ -121,8 +116,11 @@ async fn main() -> Result<()> {
         responses: responses.clone(),
         notify_queue: notify_queue.clone(),
         tasks: tasks.clone(),
-        shelf_manager: shelf_manager.clone(),
-        workspaces: workspaces.clone(),
+        workspace_srv: WorkspaceService {
+            workspaces: Arc::new(RwLock::new(HashMap::new())),
+            shelf_assignation: Arc::new(RwLock::new(HashMap::new())),
+            paths: Arc::new(RwLock::new(HashMap::new())),
+        },
         broadcast: broadcast.clone(),
         watcher: watcher.clone(),
     });

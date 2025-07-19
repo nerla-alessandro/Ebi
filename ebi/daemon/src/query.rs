@@ -2,7 +2,7 @@ use crate::shelf::file::FileSummary;
 use crate::tag::TagId;
 use crate::workspace::{TagErr, WorkspaceId};
 use std::collections::{BTreeSet, HashSet};
-use std::sync::{Arc, RwLock};
+//use std::sync::{Arc, RwLock};
 
 #[derive(Debug)]
 pub enum Order {
