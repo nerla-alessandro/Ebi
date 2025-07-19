@@ -1,7 +1,7 @@
 use crate::shelf::node::Node;
 use crate::tag::TagRef;
-use crate::workspace::{ChangeSummary, WorkspaceId};
-use std::collections::{BTreeSet, HashMap};
+use crate::workspace::ChangeSummary;
+use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::io;
 use std::path::PathBuf;
@@ -9,10 +9,54 @@ use std::result::Result;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
+use iroh::NodeId;
 
 use super::file::FileRef;
 
 pub type ShelfId = Uuid;
+
+pub type ShelfRef = Arc<RwLock<Shelf>>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ShelfKind {
+    Local,
+    Remote
+}
+
+#[derive(Clone, Debug)]
+pub struct Shelf {
+    pub kind: ShelfKind,
+    pub nodes: Vec<NodeId>,
+    pub data_ref: Arc<RwLock<ShelfData>>,
+    pub info: ShelfInfo
+}
+
+impl Shelf {
+    pub fn is_remote(&self) -> bool {
+        self.kind == ShelfKind::Remote
+    }
+
+    pub async fn edit_info(
+        &mut self,
+        new_name: Option<String>,
+        new_description: Option<String>,
+    ) {
+        if let Some(name) = new_name {
+            self.info.name = name;
+        }
+        if let Some(description) = new_description {
+            self.info.description = description;
+        }
+    }
+
+
+}
+
+#[derive(Debug)]
+pub struct ShelfData {
+    root: Node,
+    root_path: PathBuf,
+}
 
 #[derive(Clone, Debug)]
 pub struct ShelfInfo {
@@ -48,73 +92,11 @@ impl ShelfInfo {
     }
 }
 
-pub struct ShelfManager {
-    pub shelves: HashMap<ShelfId, Arc<RwLock<Shelf>>>,
-    pub count: HashMap<ShelfId, u64>,     // Workspaces per Shelf
-    pub paths: HashMap<PathBuf, ShelfId>, // Path to Shelf ID
-}
-
-impl ShelfManager {
-    pub fn new() -> Self {
-        ShelfManager {
-            shelves: HashMap::new(),
-            count: HashMap::new(),
-            paths: HashMap::new(),
-        }
-        //[!] Run automatic tagging on all files in the shelf
-    }
-
-    pub fn add_shelf(&mut self, path: PathBuf) -> Result<ShelfId, io::Error> {
-        if self.paths.contains_key(&path) {
-            let id = self.paths[&path];
-            self.count.get_mut(&id).map(|c| *c += 1);
-            return Ok(self.paths[&path]);
-        }
-
-        let id = loop {
-            let id = Uuid::now_v7();
-            if !self.shelves.contains_key(&id) {
-                break id;
-            }
-        };
-        let shelf = Shelf::new(path.clone())?;
-        self.shelves.insert(id, Arc::new(RwLock::new(shelf)));
-        self.count.insert(id, 1);
-        self.paths.insert(path.clone(), id);
-        return Ok(id);
-    }
-
-    pub async fn try_remove_shelf(&mut self, id: ShelfId) -> bool {
-        if self.shelves.contains_key(&id) {
-            let workspace_count = self.count.get(&id).unwrap();
-            if *workspace_count > 1 {
-                self.count.get_mut(&id).map(|c| *c -= 1);
-                return false;
-            } else {
-                let path = self.shelves[&id].read().await.root_path.clone();
-                self.shelves.remove(&id);
-                self.count.remove(&id);
-                self.paths.remove(&path);
-                return true;
-            }
-        }
-        false
-    }
-}
-
-// Shelf
-#[derive(Debug)]
-pub struct Shelf {
-    root: Node,
-    root_path: PathBuf,
-    // String = Workspace identifier + Global
-}
-
-impl Shelf {
+impl ShelfData {
     pub fn new(path: PathBuf) -> Result<Self, io::Error> {
-        Ok(Shelf {
+        Ok(ShelfData {
             root: Node::new(path.clone())?,
-            root_path: path,
+            root_path: path.clone(),
         })
     }
 

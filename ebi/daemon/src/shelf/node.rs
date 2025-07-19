@@ -1,6 +1,5 @@
-use crate::shelf::file::{File, FileMetadata, FileRef, FileSummary};
+use crate::shelf::file::{File, FileMetadata, FileRef};
 use crate::tag::TagRef;
-use crate::workspace::WorkspaceId;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io;
 use std::path::PathBuf;

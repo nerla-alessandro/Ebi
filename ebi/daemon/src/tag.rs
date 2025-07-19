@@ -1,14 +1,8 @@
-use crate::shelf::file::FileSummary;
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::pin::Pin;
 use std::sync::{Arc, RwLock};
-use std::vec;
 use uuid::Uuid;
 
-use crate::workspace::WorkspaceId;
-use async_trait::async_trait;
 
 pub type TagId = Uuid;
 
