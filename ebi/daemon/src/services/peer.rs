@@ -23,7 +23,7 @@ pub enum PeerError {
     PeerNotFound,
     TimedOut,
     UnexpectedResponse,
-    ConnectionClosed, // [!] investigate better
+    ConnectionClosed, // [TODO] Investigate how to detect connection closed
     Unknown,
 }
 
@@ -78,6 +78,7 @@ impl Service<(NodeId, Request)> for PeerService {
             let request_uuid = Uuid::now_v7();
             let req = req.1.clone();
             req.metadata().as_mut().unwrap().request_uuid = request_uuid.as_bytes().to_vec();
+            req.metadata().as_mut().unwrap().relayed = true; // All requests sent via the PeerService are relayed
             req.encode(&mut payload).unwrap();
             let mut buffer = vec![0; HEADER_SIZE];
             buffer[0] = MessageType::Request as u8;

@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
         tasks: tasks.clone(),
         workspace_srv: WorkspaceService {
             workspaces: Arc::new(RwLock::new(HashMap::new())),
-            shelf_assignation: Arc::new(RwLock::new(HashMap::new())),
+            shelf_assignment: Arc::new(RwLock::new(HashMap::new())),
             paths: Arc::new(RwLock::new(HashMap::new())),
         },
         broadcast: broadcast.clone(),
@@ -158,10 +158,10 @@ async fn main() -> Result<()> {
             },
             conn = ep.accept() => {
                 let conn = conn.unwrap().await?;
-                //[!] We need to check that the peer is authorized
+                //[!] Check if Peer has authorisation to connect (and if permissions match)
                 let mut service = service.clone();
                 let (tx, mut rx) = mpsc::channel::<(Uuid, Vec<u8>)>(64);
-                // [!] handle multi incoming connections per peer
+                // [!] Handle multiple incoming connections per Peer
                 let peer = Peer {
                     id: conn.remote_node_id().unwrap(),
                     watcher: watcher.clone(),

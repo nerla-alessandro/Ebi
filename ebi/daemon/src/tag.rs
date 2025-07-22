@@ -13,8 +13,6 @@ pub struct TagData {
     pub parent: Option<Box<TagData>>,
 }
 
-//[#] Tag
-
 #[derive(Debug, Eq, PartialOrd, PartialEq, Ord, Hash, Default)]
 pub struct Tag {
     pub id: TagId,

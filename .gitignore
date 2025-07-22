@@ -5,10 +5,12 @@ Automated Test Procedures/Tests/Workspaces/Generated/**/*
 **/debug/
 **/target/
 **/*.rs.bk
-Automated Test Procedures/Tests/Workspaces/Generated/TestDir.tag
 
 # Ignore Design Documents
 design/**/*
 
 # Ignore IDE Files
-.vscode/**/*
+**/.vscode/
+
+# Ignore utility scripts
+**/scripts/

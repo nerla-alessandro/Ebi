@@ -12,18 +12,16 @@ use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone)]
 pub struct FileSummary {
-    pub file_ref: FileRef,
-    pub root: Option<NodeId>, // Whether the file is local or remote
+    pub owner_node: Option<NodeId>, // Whether the file is local or remote
     pub path: PathBuf,
     pub metadata: FileMetadata,
     //[?] Icon/Preview ??
 }
 
 impl FileSummary {
-    fn new(file_ref: FileRef, root: Option<NodeId>, path: PathBuf, metadata: FileMetadata) -> Self {
+    fn new(owner_node: Option<NodeId>, path: PathBuf, metadata: FileMetadata) -> Self {
         FileSummary {
-            file_ref,
-            root,
+            owner_node,
             path,
             metadata,
         }
@@ -34,7 +32,6 @@ impl From<FileRef> for FileSummary {
     fn from(value: FileRef) -> Self {
         let file = value.file_ref.read().unwrap();
         FileSummary::new(
-            value.clone(),
             None, // Can only be used if you have a FileRef, therefore the file is local
             file.path.clone(),
             file.metadata.clone(),

@@ -20,8 +20,8 @@ const HEADER_SIZE: usize = 10; //[!] Move to Constant file
 #[derive(Clone)]
 pub struct WorkspaceService {
     pub workspaces: Arc<RwLock<HashMap<WorkspaceId, WorkspaceRef>>>,
-    pub shelf_assignation: Arc<RwLock<HashMap<ShelfId, Vec<WorkspaceId>>>>,
-    pub paths: Arc<RwLock<HashMap<PathBuf, ShelfId>>> // [!] should this be HashMap<NodeId, HashMap<PathBuf, ShelfId>> ?,
+    pub shelf_assignment: Arc<RwLock<HashMap<ShelfId, Vec<WorkspaceId>>>>,
+    pub paths: Arc<RwLock<HashMap<PathBuf, ShelfId>>> // [?] Should this be HashMap<NodeId, HashMap<PathBuf, ShelfId>> ?? //[/] Node IDs can be gathered from the ShelfRef 
 }
 
 enum Operations {
@@ -186,11 +186,11 @@ impl Service<UnassignShelf> for WorkspaceService {
     }
 
     fn call(&mut self, req: UnassignShelf) -> Self::Future {
-        let shelf_assignation = self.shelf_assignation.clone();
+        let shelf_assignment = self.shelf_assignment.clone();
         let paths = self.paths.clone();
         Box::pin(async move {
-            let mut shelf_assignation_w = shelf_assignation.write().await;
-            let Some(workspace_list) = shelf_assignation_w.get_mut(&req.shelf_id) else {
+            let mut shelf_assignment_w = shelf_assignment.write().await;
+            let Some(workspace_list) = shelf_assignment_w.get_mut(&req.shelf_id) else {
                 return Err(ReturnCode::ShelfNotFound)
             };
             workspace_list.retain(|&w_id| w_id != req.workspace_id);
@@ -217,16 +217,19 @@ impl Service<RemoveWorkspace> for WorkspaceService {
     }
 
     fn call(&mut self, req: RemoveWorkspace) -> Self::Future {
-        let shelf_assignation = self.shelf_assignation.clone();
+        let workspaces = self.workspaces.clone();
+        let shelf_assignment = self.shelf_assignment.clone();
         let paths = self.paths.clone();
         Box::pin(async move {
-            let mut shelf_assignation_w = shelf_assignation.write().await;
-            for (shelf, workspaces) in shelf_assignation_w.iter_mut() {
-                workspaces.retain(|&w_id| w_id != req.workspace_id); 
-                if workspaces.is_empty() {
+            let mut shelf_assignment_w = shelf_assignment.write().await;
+            for (shelf, workspace_ls) in shelf_assignment_w.iter_mut() {
+                workspace_ls.retain(|&w_id| w_id != req.workspace_id); 
+                if workspace_ls.is_empty() {
                     paths.write().await.retain(|_, s_id| s_id != shelf);
                 }
             }
+            let mut workspaces_w = workspaces.write().await;
+            workspaces_w.remove(&req.workspace_id);
             Ok(())
         })
     }
