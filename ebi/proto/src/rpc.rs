@@ -58,7 +58,6 @@ include!(concat!(env!("OUT_DIR"), "/ebi.rpc.rs"));
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReturnCode {
-    ParseError = -1,
     Success = 0,
     PeerNotFound = 1,
     TagNotFound = 2,
@@ -67,6 +66,7 @@ pub enum ReturnCode {
     PathNotFound = 5,
     FileNotFound = 6,
     InternalStateError = 7,
+    ParseError = 8,
     PeerServiceError = 10,
     DuplicateTag = 201,
     ParentNotFound = 202,

@@ -32,7 +32,7 @@ impl From<FileRef> for FileSummary {
     fn from(value: FileRef) -> Self {
         let file = value.file_ref.read().unwrap();
         FileSummary::new(
-            None, // Can only be used if you have a FileRef, therefore the file is local
+            None, //[!] Should be added in rpc.rs, as it is stored in DaemonInfo 
             file.path.clone(),
             file.metadata.clone(),
         )
