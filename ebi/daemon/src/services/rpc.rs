@@ -1,6 +1,6 @@
 use crate::services::peer::PeerService;
 use crate::services::workspace::{WorkspaceService, GetWorkspace, GetShelf, GetTag, UnassignShelf, RemoveWorkspace};
-use crate::shelf::shelf::{ShelfId, ShelfKind, UpdateErr, ShelfRef};
+use crate::shelf::shelf::{ShelfId, ShelfType, UpdateErr, ShelfRef};
 use crate::tag::{TagId, TagRef};
 use crate::workspace::{Workspace, WorkspaceRef};
 use ebi_proto::rpc::*;
@@ -36,9 +36,8 @@ macro_rules! return_error {
     };
 }
 
-
 async fn try_get_workspace(rawid: &Vec<u8>, srv: &mut WorkspaceService) -> Result<WorkspaceRef, ReturnCode> {
-    let id = uuid(rawid.clone()).map_err(|_| ReturnCode::WorkspaceNotFound)?;
+    let id = uuid(rawid.clone()).map_err(|_| ReturnCode::WorkspaceNotFound)?; //[!] Change to UuidParseErr //[?] Why ??
     srv.call(GetWorkspace { id }).await
 }
 
@@ -156,7 +155,7 @@ impl Service<DeleteTag> for RpcService {
 
             let Ok(workspace) = try_get_workspace(&req.workspace_id, &mut workspace_srv).await else {
                 return_error!(
-                    ReturnCode::WorkspaceNotFound, // [!] should be changed to ID can not be parsed
+                    ReturnCode::WorkspaceNotFound, //[!] Change to UuidParseErr //[?] Why ??
                     DeleteTagResponse,
                     metadata.request_uuid,
                     error_data
@@ -178,16 +177,25 @@ impl Service<DeleteTag> for RpcService {
             let shelves = workspace_r.shelves.clone();
 
             drop(workspace_r);
-
-            // Fast local operation. Require shelf_manager lock once
+            
             for (_id, shelf) in shelves {
                 let shelf_r = shelf.read().await;
-                match shelf_r.kind {
-                    ShelfKind::Local => {
-                        let _ = shelf_r.data_ref.write().await.strip(PathBuf::from(""), tag.clone());
+                let shelf_type = shelf_r.shelf_type.clone();
+                let shelf_config = shelf_r.config.clone();
+                drop(shelf_r);
+                
+                match shelf_type {
+                    ShelfType::Local(shelf_data) => {
+                        let _ = shelf_data.write().await.strip(PathBuf::from(""), tag.clone()); //[/] Operation can't fail 
+                        //[?] Are (remote) Sync'd shelves also in shelves ?? 
+                        if shelf_config.sync_config.is_some() {
+                            //[TODO] Sync Notification
+                        }
                     }
-                    ShelfKind::Remote => {
+                    ShelfType::Remote(_peer) => {
                         //[TODO] Remote Request
+                        //[?] For all Nodes with Write-Permissions, relay ?? 
+                        //[!] Request must be atomic, relaying may not be sufficient 
                         // Relay the request via the peer service
                         // Await for the response to be inserted into the relay_responses map
                         // Handle the responses
@@ -201,7 +209,7 @@ impl Service<DeleteTag> for RpcService {
             notify_queue.write().await.push_back({
                 Notification::Operation(Operation {
                     target: ActionTarget::Tag.into(),
-                    id: tag_id.as_bytes().to_vec(),
+                    id: req.tag_id,
                     action: ActionType::Delete.into(),
                 })
             });
@@ -258,27 +266,34 @@ impl Service<StripTag> for RpcService {
                 );
             };
             let shelf_r = shelf.read().await;
-            let shelf_id = shelf_r.info.id;
-            let remote = shelf_r.is_remote();
-            let data_ref = shelf.read().await.data_ref.clone();
+            let shelf_id = req.shelf_id.clone();
+            let shelf_type = shelf_r.shelf_type.clone();
+            let shelf_config = shelf_r.config.clone();
             drop(shelf_r);
 
             let return_code = {
-                if remote {
-                    let peer_id: NodeId = shelf.read().await.nodes.first().unwrap().clone(); // [!] discuss wheter
-                                                                            // [!] nodes is a list or not
-                    match peer_srv.call((peer_id, Request::from(req))).await {
-                        Ok(res) => parse_code(res.metadata().unwrap().return_code),
-                        Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service
+                match shelf_type {
+                    ShelfType::Local(shelf_data) => {
+                        let path = PathBuf::from(req.path);
+                        let mut shelf_w = shelf_data.write().await;
+                        let result = match shelf_w.strip(path, tag_ref) {
+                            Ok(_) => ReturnCode::Success,
+                            Err(UpdateErr::PathNotDir) => ReturnCode::PathNotDir, // Path not a Directory
+                            Err(UpdateErr::PathNotFound) => ReturnCode::PathNotFound, // Path not Found
+                            Err(UpdateErr::FileNotFound) => ReturnCode::FileNotFound, // "Nothing ever happens" -Chudda
+                        };
+                        drop(shelf_w);
+                        if shelf_config.sync_config.is_some() {
+                            //[TODO] Sync Notification
+                        }
+                        result
                     }
-                } else {
-                    let mut shelf_w = data_ref.write().await;
-                    let path = PathBuf::from(req.path);
-                    match shelf_w.strip(path, tag_ref.clone()) {
-                        Ok(_) => ReturnCode::Success,
-                        Err(UpdateErr::PathNotDir) => ReturnCode::PathNotDir, // Path not a Directory
-                        Err(UpdateErr::PathNotFound) => ReturnCode::PathNotFound, // Path not Found
-                        Err(UpdateErr::FileNotFound) => ReturnCode::FileNotFound, // "Nothing ever happens" -Chudda
+                    ShelfType::Remote(peer) => {
+                        //[/] Request can be relayed, it is already atomic 
+                        match peer_srv.call((peer, Request::from(req))).await {
+                            Ok(res) => parse_code(res.metadata().unwrap().return_code),
+                            Err(_) => ReturnCode::PeerServiceError, //[!] Generic error, expand with PeerService errors 
+                        }
                     }
                 }
             };
@@ -287,7 +302,7 @@ impl Service<StripTag> for RpcService {
                 notify_queue.write().await.push_back({
                     Notification::Operation(Operation {
                         target: ActionTarget::Shelf.into(),
-                        id: shelf_id.as_bytes().to_vec(),
+                        id: shelf_id,
                         action: ActionType::Edit.into(),
                     })
                 });
@@ -344,35 +359,40 @@ impl Service<DetachTag> for RpcService {
                 );
             };
             let shelf_r = shelf.read().await;
-            let shelf_id = shelf_r.info.id;
-            let remote = shelf_r.is_remote();
-            let data_ref = shelf.read().await.data_ref.clone();
+            let shelf_id = req.shelf_id.clone();
+            let shelf_type = shelf_r.shelf_type.clone();
+            let shelf_config = shelf_r.config.clone();
             drop(shelf_r);
 
             //[/] Business Logic
             let return_code = {
-                if remote {
-                   let peer_id: NodeId = shelf.read().await.nodes.first().unwrap().clone(); // [!] discuss wheter
-                    match peer_srv.call((peer_id, Request::from(req))).await {
-                        Ok(res) => parse_code(res.metadata().unwrap().return_code),
-                        Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service
+                match shelf_type {
+                    ShelfType::Local(shelf_data) => {
+                        let path = PathBuf::from(&req.path);
+                        let mut shelf_w = shelf_data.write().await;
+                        let result = if path.is_file() {
+                            shelf_w.detach(path, tag_ref)
+                        } else {
+                            shelf_w.detach_dtag(path, tag_ref)
+                        };
+                        drop(shelf_w);
+                        if shelf_config.sync_config.is_some() {
+                            //[TODO] Sync Notification
+                        }
+                        match result {
+                            Ok(true) => ReturnCode::Success,                            // Success
+                            Ok(false) => ReturnCode::NotTagged,                         // File not tagged
+                            Err(UpdateErr::PathNotFound) => ReturnCode::PathNotFound,   // Path not found
+                            Err(UpdateErr::FileNotFound) => ReturnCode::FileNotFound,   // File not found
+                            Err(UpdateErr::PathNotDir) => ReturnCode::PathNotDir,       // "Nothing ever happens" -Chudda
+                        }
                     }
-
-                } else {
-                    let mut shelf_w = data_ref.write().await;
-                    let path = PathBuf::from(&req.path);
-                    let result = if path.is_file() {
-                        shelf_w.detach(path, tag_ref)
-                    } else {
-                        shelf_w.detach_dtag(path, tag_ref)
-                    };
-
-                    match result {
-                        Ok(true) => ReturnCode::Success,                          // Success
-                        Ok(false) => ReturnCode::NotTagged,                       // File not tagged
-                        Err(UpdateErr::PathNotFound) => ReturnCode::PathNotFound, // Path not found
-                        Err(UpdateErr::FileNotFound) => ReturnCode::FileNotFound, // File not found
-                        Err(UpdateErr::PathNotDir) => ReturnCode::PathNotDir, // "Nothing ever happens" -Chudda
+                    ShelfType::Remote(peer) => {
+                        //[/] Request can be relayed, it is already atomic 
+                        match peer_srv.call((peer, Request::from(req))).await {
+                            Ok(res) => parse_code(res.metadata().unwrap().return_code),
+                            Err(_) => ReturnCode::PeerServiceError, //[!] Generic error, expand with PeerService errors 
+                        }
                     }
                 }
             };
@@ -381,7 +401,7 @@ impl Service<DetachTag> for RpcService {
                 notify_queue.write().await.push_back({
                     Notification::Operation(Operation {
                         target: ActionTarget::Shelf.into(),
-                        id: shelf_id.as_bytes().to_vec(),
+                        id: shelf_id,
                         action: ActionType::Edit.into(),
                     })
                 });
@@ -439,34 +459,39 @@ impl Service<AttachTag> for RpcService {
             };
             let shelf_r = shelf.read().await;
             let shelf_id = req.shelf_id.clone();
-            let remote = shelf_r.is_remote();
-            let data_ref = shelf.read().await.data_ref.clone();
+            let shelf_type = shelf_r.shelf_type.clone();
+            let shelf_config = shelf_r.config.clone();
             drop(shelf_r);
 
-
+            //[/] Business Logic
             let return_code = {
-                if remote {
-                   let peer_id: NodeId = shelf.read().await.nodes.first().unwrap().clone(); // [!] discuss wheter
-                    match peer_srv.call((peer_id, Request::from(req))).await {
-                        Ok(res) => parse_code(res.metadata().unwrap().return_code),
-                        Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service
+                match shelf_type {
+                    ShelfType::Local(shelf_data) => {
+                        let path = PathBuf::from(&req.path);
+                        let mut shelf_w = shelf_data.write().await;
+                        let result = if path.is_file() {
+                            shelf_w.attach(path, tag_ref)
+                        } else {
+                            shelf_w.attach_dtag(path, tag_ref)
+                        };
+                        drop(shelf_w);
+                        if shelf_config.sync_config.is_some() {
+                            //[TODO] Sync Notification
+                        }
+                        match result {
+                            Ok(true) => ReturnCode::Success,                            // Success
+                            Ok(false) => ReturnCode::TagAlreadyAttached,                // File not tagged
+                            Err(UpdateErr::PathNotFound) => ReturnCode::PathNotFound,   // Path not found
+                            Err(UpdateErr::FileNotFound) => ReturnCode::FileNotFound,   // File not found
+                            Err(UpdateErr::PathNotDir) => ReturnCode::PathNotDir,       // "Nothing ever happens" -Chudda
+                        }
                     }
-                } else {
-                    let mut shelf_w = data_ref.write().await;
-
-                    let path = PathBuf::from(&req.path);
-                    let result = if path.is_file() {
-                        shelf_w.attach(path, tag_ref)
-                    } else {
-                        shelf_w.attach_dtag(path, tag_ref)
-                    };
-
-                    match result {
-                        Ok(true) => ReturnCode::Success,                          // Success
-                        Ok(false) => ReturnCode::TagAlreadyAttached, // File already tagged
-                        Err(UpdateErr::PathNotFound) => ReturnCode::PathNotFound, // Path not found
-                        Err(UpdateErr::FileNotFound) => ReturnCode::FileNotFound, // File not found
-                        Err(UpdateErr::PathNotDir) => ReturnCode::PathNotDir, // "Nothing ever happens" -Chudda
+                    ShelfType::Remote(peer) => {
+                        //[/] Request can be relayed, it is already atomic 
+                        match peer_srv.call((peer, Request::from(req))).await {
+                            Ok(res) => parse_code(res.metadata().unwrap().return_code),
+                            Err(_) => ReturnCode::PeerServiceError, //[!] Generic error, expand with PeerService errors 
+                        }
                     }
                 }
             };
@@ -529,33 +554,39 @@ impl Service<RemoveShelf> for RpcService {
             };
             let shelf_r = shelf.read().await;
             let shelf_id = shelf_r.info.id;
-            let workspace_id = workspace.read().await.id;
-            let remote = shelf_r.is_remote();
+            let shelf_type = shelf_r.shelf_type.clone();
+            let shelf_config = shelf_r.config.clone();
             drop(shelf_r);
+            let workspace_id = workspace.read().await.id;
 
             //[/] Business Logic
             let return_code = {
-                if remote {
-                   let peer_id: NodeId = shelf.read().await.nodes.first().unwrap().clone(); // [!] discuss wheter
-                    match peer_srv.call((peer_id, Request::from(req.clone()))).await {
-                        Ok(res) => {
-                            workspace.write().await.shelves.remove(&shelf_id);
-                            parse_code(res.metadata().unwrap().return_code)
-                        },
-                        Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service
+                match shelf_type {
+                    ShelfType::Local(_) => {
+                        workspace.write().await.shelves.remove(&shelf_id);
+                        let _ = workspace_srv.call(UnassignShelf { shelf_id, workspace_id }).await;
+                        notify_queue.write().await.push_back({
+                            Notification::Operation(Operation {
+                                target: ActionTarget::Shelf.into(),
+                                id: shelf_id.as_bytes().to_vec(),
+                                action: ActionType::Delete.into(),
+                            })
+                        });
+                        if shelf_config.sync_config.is_some() {
+                            //[TODO] Sync Notification
+                        }
+                        ReturnCode::Success //[/] Operation can't fail 
                     }
-                } else {
-                    workspace.write().await.shelves.remove(&shelf_id);
-
-                    let _ = workspace_srv.call(UnassignShelf { shelf_id, workspace_id }).await;
-                    notify_queue.write().await.push_back({
-                        Notification::Operation(Operation {
-                            target: ActionTarget::Shelf.into(),
-                            id: shelf_id.as_bytes().to_vec(),
-                            action: ActionType::Delete.into(),
-                        })
-                    });
-                    ReturnCode::Success
+                    ShelfType::Remote(peer) => {
+                        //[/] Request can be relayed, it is already atomic 
+                        match peer_srv.call((peer, Request::from(req))).await {
+                            Ok(res) => {
+                                workspace.write().await.shelves.remove(&shelf_id);
+                                parse_code(res.metadata().unwrap().return_code)
+                            },
+                            Err(_) => ReturnCode::PeerServiceError, //[!] Generic error, expand with PeerService errors 
+                        }
+                    }
                 }
             };
 
@@ -563,7 +594,7 @@ impl Service<RemoveShelf> for RpcService {
                 notify_queue.write().await.push_back({
                     Notification::Operation(Operation {
                         target: ActionTarget::Workspace.into(),
-                        id: req.workspace_id,
+                        id: workspace_id.as_bytes().to_vec(),
                         action: ActionType::Edit.into(),
                     })
                 });
@@ -613,28 +644,35 @@ impl Service<EditShelf> for RpcService {
             };
 
             let shelf_r = shelf.read().await;
-            let remote = shelf_r.is_remote();
+            let shelf_type = shelf_r.shelf_type.clone();
+            let shelf_config = shelf_r.config.clone();
             drop(shelf_r);
 
             //[/] Business Logic
             let return_code = {
-                if remote {
-                   let peer_id: NodeId = shelf.read().await.nodes.first().unwrap().clone(); // [!] discuss wheter
-                    match peer_srv.call((peer_id, Request::from(req.clone()))).await {
+                match shelf_type {
+                    ShelfType::Local(_) => {
+                        shelf.write().await.edit_info(
+                            Some(req.name.clone()),
+                            Some(req.description.clone()),
+                        ).await;
+                        if shelf_config.sync_config.is_some() {
+                            //[TODO] Sync Notification
+                        }
+                        ReturnCode::Success
+                    }
+                    ShelfType::Remote(peer) => {
+                        //[/] Request can be relayed, it is already atomic 
+                        match peer_srv.call((peer, Request::from(req.clone()))).await {
                         Ok(res) => {
                             parse_code(res.metadata().unwrap().return_code)
                         },
-                        Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service
+                            Err(_) => ReturnCode::PeerServiceError, //[!] Generic error, expand with PeerService errors 
+                        }
                     }
-                } else {
-                    shelf.write().await.edit_info(
-                        Some(req.name.clone()),
-                        Some(req.description.clone()),
-                    ).await;
-                    ReturnCode::Success
                 }
             };
-
+            
             if return_code == ReturnCode::Success {
                 notify_queue.write().await.push_back({
                     Notification::Operation(Operation {
@@ -688,7 +726,7 @@ impl Service<AddShelf> for RpcService {
             };
 
             //[/] Peer ID unwrap & validation
-            //[!] missing peer validation (only parsing)
+            //[!] Missing Peer validation (only parsing)
             let Ok(peer_id) = parse_peer_id(&req.peer_id.clone()) else {
                 return_error!(
                     ReturnCode::PeerNotFound,
@@ -706,7 +744,7 @@ impl Service<AddShelf> for RpcService {
                         .await
                     {
                         Ok(res) => parse_code(res.metadata().unwrap().return_code),
-                        Err(_) => ReturnCode::PeerServiceError, // [!] Unknown error, expand with errors from peer service
+                        Err(_) => ReturnCode::PeerServiceError, //[!] Generic error, expand with PeerService errors 
                     }
                 } else {
                     let path = PathBuf::from(req.path.clone());
@@ -989,6 +1027,7 @@ impl Service<GetShelves> for RpcService {
     fn call(&mut self, req: GetShelves) -> Self::Future {
         let mut workspace_srv = self.workspace_srv.clone();
         let metadata = req.metadata.unwrap();
+        let daemon_info = self.daemon_info.clone();
         Box::pin(async move {
             let error_data: Option<ErrorData> = None;
 
@@ -1001,19 +1040,33 @@ impl Service<GetShelves> for RpcService {
                 );
             };
 
-            let workspace_r = workspace.read().await;
-
             let mut shelves = Vec::new();
+            let workspace_r = workspace.read().await;
             // [!] Can be changed with iter mut + impl Into<rpc::Shelf> for shelf::Shelf
             for (id, shelf) in &workspace_r.shelves {
                 let shelf_r = shelf.read().await;
+                let shelf_type = shelf_r.shelf_type.clone();
+                let shelf_info = shelf_r.info.clone();
+                let shelf_config = shelf_r.config.clone();
+                drop(shelf_r);
+                let peer_id = match &shelf_type {
+                    ShelfType::Local(_) => daemon_info.id.as_bytes().to_vec(),
+                    ShelfType::Remote(peer) => peer.as_bytes().to_vec(),
+                };
+                let sync_id = match &shelf_config.sync_config {
+                    Some(config) => Some(config.group_id.as_bytes().to_vec()),
+                    None => None,
+                };
                 shelves.push(Shelf {
-                        peer_id: shelf_r.nodes.first().unwrap().as_bytes().to_vec(), // [!] array of nodes should be handled probably
-                        shelf_id: (*id).as_bytes().to_vec(),
-                        name: shelf_r.info.name.clone(),
-                        path: shelf_r.info.root_path.to_string_lossy().into_owned(),
+                    shelf_id: id.as_bytes().to_vec(),
+                    peer_id,
+                    name: shelf_info.name.clone(),
+                    description: shelf_info.description.clone(),
+                    path: shelf_info.root_path.to_string_lossy().into_owned(),
+                    sync_id
                 });
             }
+            drop(workspace_r);
 
             let metadata = ResponseMetadata {
                 request_uuid: metadata.request_uuid,
@@ -1144,7 +1197,7 @@ impl Service<CreateTag> for RpcService {
                 );
             };
 
-            let id = workspace.write().await.create_tag(req.priority, req.name, parent);
+            let id = workspace.write().await.create_tag(req.priority, req.name, parent); //[!] Does not consider existing tags with same name
 
             notify_queue.write().await.push_back({
                 Notification::Operation(Operation {

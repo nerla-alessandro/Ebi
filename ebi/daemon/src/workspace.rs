@@ -1,5 +1,5 @@
 use crate::shelf::file::FileRef;
-use crate::shelf::shelf::{ShelfId, ShelfKind, Shelf, ShelfData, ShelfInfo};
+use crate::shelf::shelf::{ShelfId, ShelfType, Shelf, ShelfData, ShelfInfo, ShelfConfig};
 use crate::tag::{Tag, TagData, TagId, TagRef};
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
@@ -35,15 +35,14 @@ impl Workspace {
         let id = Uuid::now_v7();
         let shelf_data = ShelfData::new(path.clone())?;
         let shelf = Shelf {
-            kind: ShelfKind::Local,
-            info: ShelfInfo { id, name, description, root_path: path },
-            data_ref: Arc::new(RwLock::new(shelf_data)),
-            nodes: Vec::new()
+            shelf_type: ShelfType::Local(Arc::new(RwLock::new(shelf_data))),
+            config: ShelfConfig { sync_config: None },  // [?] Should sync_config be set on Shelf creation ??
+            info: ShelfInfo { id, name, description, root_path: path }
         };
         self.shelves.insert(id, Arc::new(RwLock::new(shelf)));
         Ok(id)
     }
-    // [!] lookup must be checked before calling this
+    // [!] Check if Tag with same name exists 
     pub fn create_tag(&mut self, priority: u64, name: String, parent: Option<TagRef>) -> TagId {
         let id = Uuid::now_v7();
         let tag = Tag {
@@ -67,7 +66,7 @@ impl Workspace {
             if tag_ref.is_some() {
                 Ok(tag_ref.unwrap())
             } else {
-                Err(TagErr::InconsistentTagManager((*id, self.id))) // [!] what does this mean
+                Err(TagErr::InconsistentTagManager((*id, self.id)))
             }
         } else {
             Err(TagErr::TagMissing(Vec::new()))

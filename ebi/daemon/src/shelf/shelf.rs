@@ -7,6 +7,7 @@ use std::io;
 use std::path::PathBuf;
 use std::result::Result;
 use std::sync::Arc;
+use chrono::Duration;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 use iroh::NodeId;
@@ -16,26 +17,41 @@ use super::file::FileRef;
 pub type ShelfId = Uuid;
 
 pub type ShelfRef = Arc<RwLock<Shelf>>;
+pub type ShelfDataRef = Arc<RwLock<ShelfData>>;
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum ShelfKind {
-    Local,
-    Remote
+#[derive(Clone, Debug)]
+pub enum ShelfType {
+    Local(ShelfDataRef),
+    Remote(NodeId)
 }
+
+//[#] Sync 
+
+pub type SyncId = Uuid;
+
+#[derive(Debug, Clone)]
+pub struct SyncConfig { //[!] Placeholder for sync configuration
+    pub group_id: SyncId, // ID of the group of Sync'd shelves
+    pub nodes: Vec<NodeId>,
+    pub interval: Option<Duration>, // Auto-Sync Interval
+    pub auto_sync: bool, // Auto-Sync on changes
+} 
+
+//[#] Sync 
+
+#[derive(Debug, Clone)]
+pub struct ShelfConfig { //[TODO] Define a configuration for the shelf
+    pub sync_config: Option<SyncConfig>,
+} 
 
 #[derive(Clone, Debug)]
 pub struct Shelf {
-    pub kind: ShelfKind,
-    pub nodes: Vec<NodeId>,
-    pub data_ref: Arc<RwLock<ShelfData>>,
+    pub shelf_type: ShelfType,
+    pub config: ShelfConfig,
     pub info: ShelfInfo
 }
 
 impl Shelf {
-    pub fn is_remote(&self) -> bool {
-        self.kind == ShelfKind::Remote
-    }
-
     pub async fn edit_info(
         &mut self,
         new_name: Option<String>,
@@ -58,12 +74,18 @@ pub struct ShelfData {
     root_path: PathBuf,
 }
 
+impl PartialEq for ShelfData {
+    fn eq(&self, other: &Self) -> bool {
+        self.root_path == other.root_path
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ShelfInfo {
     pub id: ShelfId,
     pub name: String,
     pub description: String,
-    pub root_path: PathBuf,
+    pub root_path: PathBuf, //[/] This is to minimise lock acquisition for ShelfData 
     //summary: ShelfSummary
 }
 
@@ -123,7 +145,7 @@ impl ShelfData {
 
     pub async fn refresh(&self) -> Result<ChangeSummary, io::Error> {
         todo!();
-        //[!] Run automatic tagging on all new or modified files in the shelf
+        //[TODO] Run automatic tagging on all new or modified files in the shelf
     }
 
     pub fn attach(&mut self, path: PathBuf, tag: TagRef) -> Result<bool, UpdateErr> {
