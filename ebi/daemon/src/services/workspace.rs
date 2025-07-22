@@ -7,6 +7,7 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::sync::RwLock;
+use iroh::NodeId;
 use tower::Service;
 use uuid::Uuid;
 use crate::workspace::{Workspace, WorkspaceId, WorkspaceRef};
@@ -21,7 +22,7 @@ const HEADER_SIZE: usize = 10; //[!] Move to Constant file
 pub struct WorkspaceService {
     pub workspaces: Arc<RwLock<HashMap<WorkspaceId, WorkspaceRef>>>,
     pub shelf_assignment: Arc<RwLock<HashMap<ShelfId, Vec<WorkspaceId>>>>,
-    pub paths: Arc<RwLock<HashMap<PathBuf, ShelfId>>> // [?] Should this be HashMap<NodeId, HashMap<PathBuf, ShelfId>> ?? //[/] Node IDs can be gathered from the ShelfRef 
+    pub paths: Arc<RwLock<HashMap<NodeId, HashMap<PathBuf, ShelfId>>>> // [?] Should this be HashMap<NodeId, HashMap<PathBuf, ShelfId>> ?? //[/] Node IDs can be gathered from the ShelfRef 
 }
 
 enum Operations {
@@ -195,7 +196,9 @@ impl Service<UnassignShelf> for WorkspaceService {
             };
             workspace_list.retain(|&w_id| w_id != req.workspace_id);
             if workspace_list.is_empty() {
-                paths.write().await.retain(|_, s_id| s_id != &req.shelf_id);
+                for local_paths in paths.write().await.values_mut() {
+                    local_paths.retain(|_, s_id| s_id != &req.shelf_id);
+                }
                 return Ok(true);
             }
             Ok(false)
@@ -225,7 +228,9 @@ impl Service<RemoveWorkspace> for WorkspaceService {
             for (shelf, workspace_ls) in shelf_assignment_w.iter_mut() {
                 workspace_ls.retain(|&w_id| w_id != req.workspace_id); 
                 if workspace_ls.is_empty() {
-                    paths.write().await.retain(|_, s_id| s_id != shelf);
+                    for local_paths in paths.write().await.values_mut() {
+                        local_paths.retain(|_, s_id| s_id != shelf);
+                    }
                 }
             }
             let mut workspaces_w = workspaces.write().await;
@@ -262,7 +267,7 @@ impl Service<GetTag> for WorkspaceService {
             if let Some(tag) = workspace.clone().read().await.tags.get(&req.tag_id) {
                 Ok(tag.clone())
             } else {
-                return Err(ReturnCode::ShelfNotFound)
+                return Err(ReturnCode::TagNotFound)
             }
         })
     }
