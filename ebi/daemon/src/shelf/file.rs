@@ -1,6 +1,5 @@
 use crate::tag::TagRef;
 use chrono::{DateTime, Utc};
-use iroh::NodeId;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 #[cfg(unix)]
@@ -9,30 +8,31 @@ use std::os::unix::fs::MetadataExt;
 use std::os::windows::fs::MetadataExt;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use crate::shelf::shelf::ShelfOwner;
 
 #[derive(Debug, Clone)]
 pub struct FileSummary {
-    pub owner_node: Option<NodeId>, // Whether the file is local or remote
+    pub owner: ShelfOwner,
     pub path: PathBuf,
     pub metadata: FileMetadata,
     //[?] Icon/Preview ??
 }
 
 impl FileSummary {
-    fn new(owner_node: Option<NodeId>, path: PathBuf, metadata: FileMetadata) -> Self {
+    fn new(owner: ShelfOwner, path: PathBuf, metadata: FileMetadata) -> Self {
         FileSummary {
-            owner_node,
+            owner,
             path,
             metadata,
         }
     }
 }
 
-impl From<FileRef> for FileSummary {
-    fn from(value: FileRef) -> Self {
+impl FileSummary {
+    fn from(value: FileRef, shelf: ShelfOwner) -> Self {
         let file = value.file_ref.read().unwrap();
         FileSummary::new(
-            None, //[!] Should be added in rpc.rs, as it is stored in DaemonInfo 
+            shelf,
             file.path.clone(),
             file.metadata.clone(),
         )

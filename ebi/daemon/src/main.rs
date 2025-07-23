@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use crate::services::peer::{Client, Peer, PeerService};
-use crate::services::workspace::WorkspaceService;
 use crate::services::rpc::{DaemonInfo, RequestId, RpcService, TaskID};
+use crate::services::workspace::WorkspaceService;
 use anyhow::Result;
 use ebi_proto::rpc::*;
 use iroh::{Endpoint, NodeId, SecretKey};

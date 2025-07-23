@@ -1,18 +1,16 @@
 use crate::shelf::file::FileRef;
-use crate::shelf::shelf::{ShelfId, ShelfType, Shelf, ShelfData, ShelfInfo, ShelfConfig};
+use crate::shelf::shelf::{Shelf, ShelfId};
 use crate::tag::{Tag, TagData, TagId, TagRef};
 use std::sync::Arc;
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 use tokio::sync::RwLock;
 use uuid::Uuid;
-use std::io;
 
 pub type WorkspaceId = Uuid;
 
 pub type WorkspaceRef = Arc<RwLock<Workspace>>;
 
 //[#] Workspace calls Shelf.refresh(), Shelf returns a ChangeSummary, Workspace applies Autotaggers
-
 
 pub struct Workspace {
     // Workspace Info
@@ -31,43 +29,30 @@ impl Workspace {
         self.tags.values().cloned().collect()
     }
 
-    pub fn add_local_shelf(&mut self, path: PathBuf, name: String, description: String) -> Result<ShelfId, io::Error> {
-        let id = Uuid::now_v7();
-        let shelf_data = ShelfData::new(path.clone())?;
-        let shelf = Shelf {
-            shelf_type: ShelfType::Local(Arc::new(RwLock::new(shelf_data))),
-            config: ShelfConfig { sync_config: None },  // [?] Should sync_config be set on Shelf creation ??
-            info: ShelfInfo { id, name, description, root_path: path }
-        };
-        self.shelves.insert(id, Arc::new(RwLock::new(shelf)));
-        Ok(id)
-    }
-    // [!] Check if Tag with same name exists 
+    // [!] Check if Tag with same name exists
     pub fn create_tag(&mut self, priority: u64, name: String, parent: Option<TagRef>) -> TagId {
         let id = Uuid::now_v7();
         let tag = Tag {
             id,
             priority,
             name: name.clone(),
-            parent
+            parent,
         };
         self.lookup.insert(name, id.clone());
-        self.tags.insert(id.clone(), TagRef { tag_ref: Arc::new(std::sync::RwLock::new(tag)) }) ;
+        self.tags.insert(
+            id.clone(),
+            TagRef {
+                tag_ref: Arc::new(std::sync::RwLock::new(tag)),
+            },
+        );
         id
     }
 
-    pub fn get_tag(
-        &mut self,
-        name: &str,
-    ) -> Result<TagRef, TagErr> {
+    pub fn get_tag(&mut self, name: &str) -> Result<TagRef, TagErr> {
         let id = self.lookup.get(&name.to_string());
         if let Some(id) = id {
             let tag_ref = self.tags.get(id).cloned();
-            if tag_ref.is_some() {
-                Ok(tag_ref.unwrap())
-            } else {
-                Err(TagErr::InconsistentTagManager((*id, self.id)))
-            }
+            Ok(tag_ref.unwrap())
         } else {
             Err(TagErr::TagMissing(Vec::new()))
         }

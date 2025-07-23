@@ -1,16 +1,16 @@
 use crate::shelf::node::Node;
 use crate::tag::TagRef;
 use crate::workspace::ChangeSummary;
+use chrono::Duration;
+use iroh::NodeId;
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::io;
 use std::path::PathBuf;
 use std::result::Result;
 use std::sync::Arc;
-use chrono::Duration;
 use tokio::sync::RwLock;
 use uuid::Uuid;
-use iroh::NodeId;
 
 use super::file::FileRef;
 
@@ -22,41 +22,44 @@ pub type ShelfDataRef = Arc<RwLock<ShelfData>>;
 #[derive(Clone, Debug)]
 pub enum ShelfType {
     Local(ShelfDataRef),
-    Remote(NodeId)
+    Remote,
 }
 
-//[#] Sync 
+#[derive(Clone, Debug)]
+pub enum ShelfOwner {
+    Node(NodeId),
+    Sync(SyncId)
+}
+
+//[#] Sync
 
 pub type SyncId = Uuid;
 
 #[derive(Debug, Clone)]
-pub struct SyncConfig { //[!] Placeholder for sync configuration
-    pub group_id: SyncId, // ID of the group of Sync'd shelves
-    pub nodes: Vec<NodeId>,
+pub struct SyncConfig {
+    //[!] Placeholder for sync configuration
     pub interval: Option<Duration>, // Auto-Sync Interval
-    pub auto_sync: bool, // Auto-Sync on changes
-} 
+    pub auto_sync: bool,            // Auto-Sync on changes
+}
 
-//[#] Sync 
+//[#] Sync
 
-#[derive(Debug, Clone)]
-pub struct ShelfConfig { //[TODO] Define a configuration for the shelf
+#[derive(Debug, Clone, Default)]
+pub struct ShelfConfig {
+    //[TODO] Define a configuration for the shelf
     pub sync_config: Option<SyncConfig>,
-} 
+}
 
 #[derive(Clone, Debug)]
 pub struct Shelf {
     pub shelf_type: ShelfType,
+    pub shelf_owner: ShelfOwner,
     pub config: ShelfConfig,
-    pub info: ShelfInfo
+    pub info: ShelfInfo,
 }
 
 impl Shelf {
-    pub async fn edit_info(
-        &mut self,
-        new_name: Option<String>,
-        new_description: Option<String>,
-    ) {
+    pub async fn edit_info(&mut self, new_name: Option<String>, new_description: Option<String>) {
         if let Some(name) = new_name {
             self.info.name = name;
         }
@@ -64,8 +67,34 @@ impl Shelf {
             self.info.description = description;
         }
     }
-
-
+    pub fn new(
+        remote: bool,
+        path: PathBuf,
+        name: String,
+        shelf_owner: ShelfOwner,
+        config: Option<ShelfConfig>,
+        description: String,
+    ) -> Result<Shelf, io::Error> {
+        let id = Uuid::now_v7();
+        let shelf_type = if remote {
+            ShelfType::Remote
+        } else {
+            let shelf_data = ShelfData::new(path.clone())?;
+            ShelfType::Local(Arc::new(RwLock::new(shelf_data)))
+        };
+        let shelf = Shelf {
+            shelf_type,
+            shelf_owner,
+            config: config.unwrap_or(ShelfConfig::default()),
+            info: ShelfInfo {
+                id,
+                name,
+                description,
+                root_path: path,
+            },
+        };
+        Ok(shelf)
+    }
 }
 
 #[derive(Debug)]
@@ -85,8 +114,8 @@ pub struct ShelfInfo {
     pub id: ShelfId,
     pub name: String,
     pub description: String,
-    pub root_path: PathBuf, //[/] This is to minimise lock acquisition for ShelfData 
-    //summary: ShelfSummary
+    pub root_path: PathBuf, //[/] This is to minimise lock acquisition for ShelfData
+                            //summary: ShelfSummary
 }
 
 impl ShelfInfo {
