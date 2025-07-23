@@ -3,7 +3,6 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
-
 pub type TagId = Uuid;
 
 #[derive(Clone)]

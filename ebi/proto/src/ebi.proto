@@ -150,7 +150,7 @@ message RemoveShelfResponse { //[x]
 
 message Shelf {
   bytes shelf_id = 1;
-  bytes peer_id = 2; // Peer ID of the shelf owner
+  optional bytes peer_id = 2; // Peer ID of the shelf owner
   string name = 3;
   string description = 4;
   string path = 5;
