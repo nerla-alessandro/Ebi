@@ -240,7 +240,7 @@ impl Service<AssignShelf> for WorkspaceService {
 
             let shelf_ref = match node_path.get_mut(&req.path) {
                 Some(ex_shelf_id) => {
-                    // [\] Unwraps are safe as workspace and shelf id are known to exist here
+                    // [/] Unwraps are safe as workspace and shelf id are known to exist here
                     shelf_id = ex_shelf_id.clone();
                     let workspace_id = shelf_assignment
                         .read()
