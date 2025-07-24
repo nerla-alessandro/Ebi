@@ -1,8 +1,9 @@
 use crate::shelf::file::FileRef;
 use crate::shelf::shelf::{Shelf, ShelfId};
 use crate::tag::{Tag, TagData, TagId, TagRef};
-use std::sync::Arc;
+use ebi_proto::rpc::ReturnCode;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -30,8 +31,16 @@ impl Workspace {
     }
 
     // [!] Check if Tag with same name exists
-    pub fn create_tag(&mut self, priority: u64, name: String, parent: Option<TagRef>) -> TagId {
+    pub fn create_tag(
+        &mut self,
+        priority: u64,
+        name: String,
+        parent: Option<TagRef>,
+    ) -> Result<TagId, ReturnCode> {
         let id = Uuid::now_v7();
+        if self.lookup.get(&name).is_some() {
+            return Err(ReturnCode::TagNameDuplicate);
+        }
         let tag = Tag {
             id,
             priority,
@@ -45,7 +54,7 @@ impl Workspace {
                 tag_ref: Arc::new(std::sync::RwLock::new(tag)),
             },
         );
-        id
+        Ok(id)
     }
 
     pub fn get_tag(&mut self, name: &str) -> Result<TagRef, TagErr> {
@@ -67,7 +76,9 @@ impl Workspace {
         match self.lookup.get(&tag_data.name) {
             Some(tag_id) => self.tags.get(&tag_id).unwrap().clone(),
             None => {
-                let tag_id = self.create_tag(tag_data.priority, tag_data.name, None);
+                let tag_id = self
+                    .create_tag(tag_data.priority, tag_data.name, None)
+                    .unwrap();
                 self.tags.get(&tag_id).unwrap().clone()
             }
         }

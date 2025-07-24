@@ -150,11 +150,20 @@ message RemoveShelfResponse { //[x]
 
 message Shelf {
   bytes shelf_id = 1;
-  optional bytes peer_id = 2; // Peer ID of the shelf owner
+  ShelfOwner owner = 2;
   string name = 3;
   string description = 4;
   string path = 5;
-  optional bytes sync_id = 6; // ID of the group of Sync'd shelves
+}
+
+message ShelfOwner {
+   bytes owner = 1;
+   OwnerType type = 2;
+}
+
+enum OwnerType {
+  NODE = 0;
+  SYNC = 1;
 }
 
 //[#] Tag Operations 

@@ -77,6 +77,7 @@ impl Service<(NodeId, Request)> for PeerService {
             let mut payload = Vec::new();
             let request_uuid = Uuid::now_v7();
             let req = req.1.clone();
+            // [TODO] metadata of requests should be checked for in a validation service
             req.metadata().as_mut().unwrap().request_uuid = request_uuid.as_bytes().to_vec();
             req.metadata().as_mut().unwrap().relayed = true; // All requests sent via the PeerService are relayed
             req.encode(&mut payload).unwrap();

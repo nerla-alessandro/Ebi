@@ -1,8 +1,8 @@
 use crate::services::peer::PeerService;
 use crate::services::workspace::{
-    GetShelf, GetTag, GetWorkspace, RemoveWorkspace, UnassignShelf, WorkspaceService, AssignShelf
+    AssignShelf, GetShelf, GetTag, GetWorkspace, RemoveWorkspace, UnassignShelf, WorkspaceService,
 };
-use crate::shelf::shelf::{ShelfId, ShelfRef, ShelfType, UpdateErr, ShelfOwner};
+use crate::shelf::shelf::{ShelfId, ShelfOwner, ShelfRef, ShelfType, UpdateErr};
 use crate::tag::{TagId, TagRef};
 use crate::workspace::{Workspace, WorkspaceRef};
 use ebi_proto::rpc::*;
@@ -214,7 +214,7 @@ impl Service<DeleteTag> for RpcService {
                             .write()
                             .await
                             .strip(PathBuf::from(""), tag.clone()); //[/] Operation can't fail 
-                        
+
                         //[?] Are (remote) Sync'd shelves also in shelves ??
                         if let ShelfOwner::Sync(_sync_id) = shelf_owner {
                             //[TODO] Sync Notification
@@ -322,7 +322,7 @@ impl Service<StripTag> for RpcService {
                                     Ok(res) => parse_code(res.metadata().unwrap().return_code),
                                     Err(_) => ReturnCode::PeerServiceError, //[!] Generic error, expand with PeerService errors
                                 }
-                            },
+                            }
                             ShelfOwner::Sync(_sync_id) => {
                                 todo!();
                             }
@@ -425,7 +425,7 @@ impl Service<DetachTag> for RpcService {
                                     Ok(res) => parse_code(res.metadata().unwrap().return_code),
                                     Err(_) => ReturnCode::PeerServiceError, //[!] Generic error, expand with PeerService errors
                                 }
-                            },
+                            }
                             ShelfOwner::Sync(_sync_id) => {
                                 todo!();
                             }
@@ -528,7 +528,7 @@ impl Service<AttachTag> for RpcService {
                                     Ok(res) => parse_code(res.metadata().unwrap().return_code),
                                     Err(_) => ReturnCode::PeerServiceError, //[!] Generic error, expand with PeerService errors
                                 }
-                            },
+                            }
                             ShelfOwner::Sync(_sync_id) => {
                                 todo!();
                             }
@@ -634,7 +634,7 @@ impl Service<RemoveShelf> for RpcService {
                                     Ok(res) => parse_code(res.metadata().unwrap().return_code),
                                     Err(_) => ReturnCode::PeerServiceError, //[!] Generic error, expand with PeerService errors
                                 }
-                            },
+                            }
                             ShelfOwner::Sync(_sync_id) => {
                                 todo!();
                             }
@@ -719,7 +719,7 @@ impl Service<EditShelf> for RpcService {
                                     Ok(res) => parse_code(res.metadata().unwrap().return_code),
                                     Err(_) => ReturnCode::PeerServiceError, //[!] Generic error, expand with PeerService errors
                                 }
-                            },
+                            }
                             ShelfOwner::Sync(_sync_id) => {
                                 todo!();
                             }
@@ -771,8 +771,7 @@ impl Service<AddShelf> for RpcService {
             let error_data: Option<ErrorData> = None;
             let mut shelf_id: Option<ShelfId> = None;
 
-            let Ok(workspace_id) = uuid(req.workspace_id.clone())
-            else {
+            let Ok(workspace_id) = uuid(req.workspace_id.clone()) else {
                 return_error!(
                     ReturnCode::WorkspaceNotFound,
                     AddShelfResponse,
@@ -799,20 +798,22 @@ impl Service<AddShelf> for RpcService {
                         Err(_) => ReturnCode::PeerServiceError, //[!] Generic error, expand with PeerService errors
                     }
                 } else {
-                    match 
-                    workspace_srv.call( AssignShelf {
-                        path: req.path.into(),
-                        node_id: peer_id,
-                        remote: false,
-                        description: req.description,
-                        name: req.name,
-                        workspace_id
-                    }).await {
+                    match workspace_srv
+                        .call(AssignShelf {
+                            path: req.path.into(),
+                            node_id: peer_id,
+                            remote: false,
+                            description: req.description,
+                            name: req.name,
+                            workspace_id,
+                        })
+                        .await
+                    {
                         Ok(id) => {
                             shelf_id = Some(id);
                             ReturnCode::Success
-                        },
-                        Err(e) => e
+                        }
+                        Err(e) => e,
                     }
                 }
             };
@@ -1085,23 +1086,25 @@ impl Service<GetShelves> for RpcService {
                 let shelf_owner = shelf_r.shelf_owner.clone();
                 let shelf_info = shelf_r.info.clone();
                 drop(shelf_r);
-                let peer_id = match &shelf_owner {
-                    ShelfOwner::Node(node_id) => Some(node_id.as_bytes().to_vec()),
-                    ShelfOwner::Sync(_) => None
-                };
 
-                let sync_id = match &shelf_owner {
-                    ShelfOwner::Node(_) => None,
-                    ShelfOwner::Sync(sync_id) => Some(sync_id.as_bytes().to_vec())
+                let (owner_id, owner_type) = match &shelf_owner {
+                    ShelfOwner::Node(node_id) => {
+                        (node_id.as_bytes().to_vec(), ebi_proto::rpc::OwnerType::Node)
+                    }
+                    ShelfOwner::Sync(sync_id) => {
+                        (sync_id.as_bytes().to_vec(), ebi_proto::rpc::OwnerType::Sync)
+                    }
                 };
 
                 shelves.push(Shelf {
                     shelf_id: id.as_bytes().to_vec(),
-                    peer_id,
+                    owner: Some(ebi_proto::rpc::ShelfOwner {
+                        owner: owner_id,
+                        r#type: owner_type as i32,
+                    }),
                     name: shelf_info.name.clone(),
                     description: shelf_info.description.clone(),
                     path: shelf_info.root_path.to_string_lossy().into_owned(),
-                    sync_id,
                 });
             }
             drop(workspace_r);
@@ -1250,10 +1253,18 @@ impl Service<CreateTag> for RpcService {
                 );
             };
 
-            let id = workspace
+            let Ok(id) = workspace
                 .write()
                 .await
-                .create_tag(req.priority, req.name, parent); //[!] Does not consider existing tags with same name
+                .create_tag(req.priority, req.name, parent)
+            else {
+                return_error!(
+                    ReturnCode::TagNameDuplicate,
+                    CreateTagResponse,
+                    metadata.request_uuid,
+                    error_data
+                );
+            };
 
             notify_queue.write().await.push_back({
                 Notification::Operation(Operation {
