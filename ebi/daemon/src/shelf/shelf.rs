@@ -28,7 +28,7 @@ pub enum ShelfType {
 #[derive(Clone, Debug)]
 pub enum ShelfOwner {
     Node(NodeId),
-    Sync(SyncId)
+    Sync(SyncId),
 }
 
 //[#] Sync

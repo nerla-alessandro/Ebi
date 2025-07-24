@@ -1,4 +1,4 @@
-use crate::shelf::shelf::{Shelf, ShelfId, ShelfRef, ShelfOwner};
+use crate::shelf::shelf::{Shelf, ShelfId, ShelfOwner, ShelfRef};
 use crate::tag::{TagId, TagRef};
 use crate::workspace::{Workspace, WorkspaceId, WorkspaceRef};
 use ebi_proto::rpc::*;
@@ -285,7 +285,12 @@ impl Service<AssignShelf> for WorkspaceService {
                     Arc::new(RwLock::new(shelf))
                 }
             };
-            workspace.clone().write().await.shelves.insert(shelf_id, shelf_ref);
+            workspace
+                .clone()
+                .write()
+                .await
+                .shelves
+                .insert(shelf_id, shelf_ref);
 
             let mut shelf_assignment_w = shelf_assignment.write().await;
             shelf_assignment_w
@@ -295,9 +300,7 @@ impl Service<AssignShelf> for WorkspaceService {
 
             drop(shelf_assignment_w);
 
-            node_path
-                .entry(req.path)
-                .or_insert(shelf_id);
+            node_path.entry(req.path).or_insert(shelf_id);
 
             Ok(shelf_id)
         })

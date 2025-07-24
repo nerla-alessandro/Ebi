@@ -1,3 +1,4 @@
+use crate::shelf::shelf::ShelfOwner;
 use crate::tag::TagRef;
 use chrono::{DateTime, Utc};
 use std::cmp::Ordering;
@@ -8,7 +9,6 @@ use std::os::unix::fs::MetadataExt;
 use std::os::windows::fs::MetadataExt;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use crate::shelf::shelf::ShelfOwner;
 
 #[derive(Debug, Clone)]
 pub struct FileSummary {
@@ -31,11 +31,7 @@ impl FileSummary {
 impl FileSummary {
     fn from(value: FileRef, shelf: ShelfOwner) -> Self {
         let file = value.file_ref.read().unwrap();
-        FileSummary::new(
-            shelf,
-            file.path.clone(),
-            file.metadata.clone(),
-        )
+        FileSummary::new(shelf, file.path.clone(), file.metadata.clone())
     }
 }
 

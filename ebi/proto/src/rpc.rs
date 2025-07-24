@@ -176,7 +176,7 @@ pub trait Encode {
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError>;
 }
 
-//[TODO] Create using a Procedural Macro 
+//[TODO] Create using a Procedural Macro
 #[derive(Clone)]
 #[enum_dispatch(ResMetadata)]
 pub enum Response {
@@ -238,7 +238,7 @@ impl ReqCode for Request {
     }
 }
 
-//[TODO] Create using a Procedural Macro 
+//[TODO] Create using a Procedural Macro
 #[derive(Clone)]
 #[enum_dispatch(ReqMetadata, Encode)]
 pub enum Request {
