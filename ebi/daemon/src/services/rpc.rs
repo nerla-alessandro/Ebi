@@ -1087,21 +1087,19 @@ impl Service<GetShelves> for RpcService {
                 let shelf_info = shelf_r.info.clone();
                 drop(shelf_r);
 
-                let (owner_id, owner_type) = match &shelf_owner {
+            
+                let owner_data = match &shelf_owner {
                     ShelfOwner::Node(node_id) => {
-                        (node_id.as_bytes().to_vec(), ebi_proto::rpc::OwnerType::Node)
+                        ebi_proto::rpc::shelf::Owner::NodeId(node_id.as_bytes().to_vec())
                     }
                     ShelfOwner::Sync(sync_id) => {
-                        (sync_id.as_bytes().to_vec(), ebi_proto::rpc::OwnerType::Sync)
+                        ebi_proto::rpc::shelf::Owner::SyncId(sync_id.as_bytes().to_vec())
                     }
                 };
 
                 shelves.push(Shelf {
                     shelf_id: id.as_bytes().to_vec(),
-                    owner: Some(ebi_proto::rpc::ShelfOwner {
-                        owner: owner_id,
-                        r#type: owner_type as i32,
-                    }),
+                    owner: Some(owner_data),
                     name: shelf_info.name.clone(),
                     description: shelf_info.description.clone(),
                     path: shelf_info.root_path.to_string_lossy().into_owned(),

@@ -150,20 +150,13 @@ message RemoveShelfResponse { //[x]
 
 message Shelf {
   bytes shelf_id = 1;
-  ShelfOwner owner = 2;
-  string name = 3;
-  string description = 4;
-  string path = 5;
-}
-
-message ShelfOwner {
-   bytes owner = 1;
-   OwnerType type = 2;
-}
-
-enum OwnerType {
-  NODE = 0;
-  SYNC = 1;
+  oneof owner {
+    bytes node_id = 2;
+    bytes sync_id = 3;
+  }
+  string name = 4;
+  string description = 5;
+  string path = 6;
 }
 
 //[#] Tag Operations 
