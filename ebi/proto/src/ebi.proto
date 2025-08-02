@@ -2,15 +2,16 @@ syntax = "proto3";
 package ebi.rpc;
 
 message RequestMetadata {
-  bytes request_uuid = 2;
-  uint64 source_id = 1;
+  bytes request_uuid = 1;
+  bytes source_id = 2;
   bool relayed = 3;
 }
 
 message ResponseMetadata {
   bytes request_uuid = 1;
-  uint32 return_code = 2;
-  optional ErrorData error_data = 3;
+  bytes source_id = 2;
+  uint32 return_code = 3;
+  optional ErrorData error_data = 4;
 }
 
 message ErrorData {
@@ -34,20 +35,19 @@ message PeerQuery { //[ ]
 }
 
 message PeerQueryResponse { //[ ] 
-  uint64 token = 1;
-  uint32 return_code = 2;
-  bytes files = 3;
-  ResponseMetadata metadata = 4;
+  uint32 return_code = 1;
+  bytes files = 2;
+  ResponseMetadata metadata = 3;
 }
 
 message ClientQueryResponse { //[ ] 
-  uint64 token = 1;
+  bytes token = 1;
   uint32 packets = 2;
   ResponseMetadata metadata = 3;
 }
 
 message ClientQueryData { //[ ] 
-  uint64 token = 1;
+  bytes token = 1;
   uint32 return_code = 2;
   repeated File files = 3;
 }

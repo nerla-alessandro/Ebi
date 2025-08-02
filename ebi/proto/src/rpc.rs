@@ -66,7 +66,7 @@ pub enum ReturnCode {
     PathNotFound = 5,
     FileNotFound = 6,
     InternalStateError = 7,
-    ParseError = 8,
+    MalformedRequest = 8,
     PeerServiceError = 10,
     DuplicateTag = 201,
     ParentNotFound = 202,
@@ -77,6 +77,7 @@ pub enum ReturnCode {
     WorkspaceNameEmpty = 304,
     ShelfCreationIOError = 501,
     PathNotDir = 502,
+    ParseError = isize::MAX
 }
 
 pub fn parse_code(code: u32) -> ReturnCode {
@@ -89,6 +90,7 @@ pub fn parse_code(code: u32) -> ReturnCode {
         5 => ReturnCode::PathNotFound,
         6 => ReturnCode::FileNotFound,
         7 => ReturnCode::InternalStateError,
+        8 => ReturnCode::MalformedRequest,
         10 => ReturnCode::PeerServiceError,
         201 => ReturnCode::DuplicateTag,
         202 => ReturnCode::ParentNotFound,
@@ -113,6 +115,7 @@ impl ReturnCode {
             ReturnCode::PathNotFound => 5,
             ReturnCode::FileNotFound => 6,
             ReturnCode::InternalStateError => 7,
+            ReturnCode::MalformedRequest => 8,
             ReturnCode::PeerServiceError => 10,
             ReturnCode::DuplicateTag => 201,
             ReturnCode::ParentNotFound => 202,
@@ -153,7 +156,7 @@ pub enum RequestCode {
     DeleteTag = 13,
     AttachTag = 14,
     DetachTag = 15,
-    StripTag = 16,
+    StripTag = 16
 }
 
 #[enum_dispatch]
@@ -177,7 +180,7 @@ pub trait Encode {
 }
 
 //[TODO] Create using a Procedural Macro
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[enum_dispatch(ResMetadata)]
 pub enum Response {
     CreateTagResponse(CreateTagResponse),
@@ -194,6 +197,8 @@ pub enum Response {
     DeleteTagResponse(DeleteTagResponse),
     DetachTagResponse(DetachTagResponse),
     StripTagResponse(StripTagResponse),
+    PeerQueryResponse(PeerQueryResponse),
+    ClientQueryResponse(ClientQueryResponse)
 }
 
 impl ReqCode for Response {
@@ -213,6 +218,8 @@ impl ReqCode for Response {
             Response::DeleteTagResponse(_) => RequestCode::DeleteTag,
             Response::DetachTagResponse(_) => RequestCode::DetachTag,
             Response::StripTagResponse(_) => RequestCode::StripTag,
+            Response::PeerQueryResponse(_) => RequestCode::PeerQuery,
+            Response::ClientQueryResponse(_) => RequestCode::ClientQuery,
         }
     }
 }
@@ -304,6 +311,10 @@ impl_req_metadata!(
 pub enum DataCode {
     ClientQueryData = 1,
     PeerQueryData = 2,
+}
+
+pub enum Data {
+    ClientQueryData(ClientQueryData)
 }
 
 #[derive(Debug)]
