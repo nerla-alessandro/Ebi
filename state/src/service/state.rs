@@ -11,6 +11,7 @@ use ebi_types::workspace::{WorkspaceId, WorkspaceInfo};
 use ebi_types::{Uuid, sharedref::*, stateful::*};
 use redb::{Error, ReadableTable};
 use std::path::PathBuf;
+use std::str::Bytes;
 use std::{
     future::Future,
     pin::Pin,
@@ -25,6 +26,13 @@ pub struct State {
     pub chain: Arc<ArcSwap<StateChain>>,
     pub lock: Arc<RwLock<()>>,
     pub db: Arc<Database>,
+}
+
+pub enum StateOrder {
+    Equal,
+    Ahead(usize),       
+    Diverged,           // Behind / Forked 
+    None,               // Empty chain
 }
 
 impl State {
@@ -104,6 +112,29 @@ impl State {
         write_txn.commit().unwrap();
         self.chain.store(Arc::new(new_chain));
         drop(lock);
+    }
+
+    pub async fn compare_state(&self, mut state: u128) -> StateOrder {
+        let mut chain = self.chain.load_full().hash_synced();
+        let latest = chain.pop();
+        if let Some(latest) = latest {
+            if state == latest { // Same state
+                StateOrder::Equal 
+            } else {
+                let mut counter = 1;
+                for s in chain {
+                    if state == s { // Found common state
+                        return StateOrder::Ahead(counter); 
+                    }
+                    state = state ^ s;
+                    counter += 1;
+                }
+                // No common state found
+                StateOrder::Diverged 
+            }
+        } else { // Empty chain 
+            StateOrder::None
+        }
     }
 
     pub fn workspace(&mut self, id: WorkspaceId) -> WorkspaceState {
