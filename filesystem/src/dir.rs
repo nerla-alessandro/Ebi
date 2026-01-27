@@ -2,7 +2,7 @@ use crate::ModifiablePath;
 use crate::file::FileRef;
 use arc_swap::ArcSwap;
 use ebi_types::tag::TagRef;
-use ebi_types::{FileId, Ref, ImmutRef, WithPath};
+use ebi_types::{FileId, ImmutRef, Ref, WithPath};
 use seize::Collector;
 use std::hash::RandomState;
 use std::io;

@@ -588,10 +588,9 @@ impl Service<EditShelf> for WorkspaceState {
                         .await;
                     workspace_ref
                         .stateful_rcu(|w| {
-                            let (u_m, u_s) = w.shelves.insert(
-                                shelf_ref.id,
-                                ImmutRef::new_ref(Uuid::new_v4(), s.clone()),
-                            );
+                            let (u_m, u_s) = w
+                                .shelves
+                                .insert(shelf_ref.id, ImmutRef::new_ref(Uuid::new_v4(), s.clone()));
                             let u_w = Workspace {
                                 shelves: u_m,
                                 tags: w.tags.clone(),

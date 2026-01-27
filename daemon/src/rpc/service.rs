@@ -1,4 +1,3 @@
-use bincode::de;
 use bincode::serde::encode_to_vec;
 use ebi_filesystem::service::{FileSystem, ShelfDirKey};
 use ebi_network::service::Network;

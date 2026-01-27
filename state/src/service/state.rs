@@ -11,7 +11,6 @@ use ebi_types::workspace::{WorkspaceId, WorkspaceInfo};
 use ebi_types::{Uuid, sharedref::*, stateful::*};
 use redb::{Error, ReadableTable};
 use std::path::PathBuf;
-use std::str::Bytes;
 use std::{
     future::Future,
     pin::Pin,
@@ -30,9 +29,9 @@ pub struct State {
 
 pub enum StateOrder {
     Equal,
-    Ahead(usize),       
-    Diverged,           // Behind / Forked 
-    None,               // Empty chain
+    Ahead(usize),
+    Diverged, // Behind / Forked
+    None,     // Empty chain
 }
 
 impl State {
@@ -118,21 +117,24 @@ impl State {
         let mut chain = self.chain.load_full().hash_synced();
         let latest = chain.pop();
         if let Some(latest) = latest {
-            if state == latest { // Same state
-                StateOrder::Equal 
+            if state == latest {
+                // Same state
+                StateOrder::Equal
             } else {
                 let mut counter = 1;
                 for s in chain {
-                    if state == s { // Found common state
-                        return StateOrder::Ahead(counter); 
+                    if state == s {
+                        // Found common state
+                        return StateOrder::Ahead(counter);
                     }
                     state = state ^ s;
                     counter += 1;
                 }
                 // No common state found
-                StateOrder::Diverged 
+                StateOrder::Diverged
             }
-        } else { // Empty chain 
+        } else {
+            // Empty chain
             StateOrder::None
         }
     }
