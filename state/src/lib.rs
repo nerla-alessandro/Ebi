@@ -95,9 +95,7 @@ impl StateChain {
     pub fn hash_synced(&self) -> Vec<u128> {
         self.synced
             .iter()
-            .map(|state_ref| {
-                state_ref.id.as_u128()
-            })
+            .map(|state_ref| state_ref.id.as_u128())
             .collect()
     }
 }
