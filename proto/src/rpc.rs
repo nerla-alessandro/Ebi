@@ -7,6 +7,10 @@ pub use prost::Message;
 use std::convert::TryFrom;
 use uuid::Uuid;
 
+//[#] Macros for:
+// .metadata()  - Retrieving metadata from enum variants
+// try_from(u8) - Converting u8 to enum variants
+
 macro_rules! impl_try_from {
     ($enum_name:ident, $( $variant:ident ),* $(,)?) => {
         impl TryFrom<u8> for $enum_name {
@@ -61,7 +65,30 @@ macro_rules! impl_req_metadata {
     };
 }
 
+macro_rules! impl_notify_metadata {
+    ($($variant:ident),* $(,)?) => {
+
+        paste! {
+            $(
+                impl NotifyMetadata for $variant {
+                    fn metadata(&self) -> Option<NotificationMetadata> {
+                        self.metadata.clone()
+                    }
+                }
+
+                impl Encode for $variant {
+                    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+                        Message::encode(self, buf)
+                    }
+                }
+            )*
+        }
+    };
+}
+
 include!(concat!(env!("OUT_DIR"), "/ebi.rpc.rs"));
+
+//[#] Return Code
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReturnCode {
@@ -157,6 +184,8 @@ impl ReturnCode {
     }
 }
 
+//[#] Message Enums
+
 #[derive(Debug)]
 pub enum MessageType {
     Request = 1,
@@ -187,27 +216,85 @@ pub enum RequestCode {
     StripTag = 16,
 }
 
-#[enum_dispatch]
-pub trait ResMetadata {
-    fn metadata(&self) -> Option<Status>;
+#[derive(Debug)]
+pub enum NotificationCode {
+    Heartbeat = 1,
+    Rollforward = 2,
+    SuspectedDesync = 3,
+    PeerConnected = 4,
 }
 
-#[enum_dispatch]
-pub trait ReqMetadata {
-    fn metadata(&self) -> Option<RequestMetadata>;
-}
-
-#[enum_dispatch]
-pub trait ReqCode {
-    fn request_code(&self) -> RequestCode;
-}
+//[#] Traits
 
 #[enum_dispatch]
 pub trait Encode {
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError>;
 }
 
+//[/] Metadata
+
+#[enum_dispatch]
+pub trait ReqMetadata {
+    fn metadata(&self) -> Option<RequestMetadata>;
+}
+#[enum_dispatch]
+pub trait ResMetadata {
+    fn metadata(&self) -> Option<Status>;
+}
+
+#[enum_dispatch]
+pub trait NotifyMetadata {
+    fn metadata(&self) -> Option<NotificationMetadata>;
+}
+
+//[/] Codes
+
+#[enum_dispatch]
+pub trait ReqCode {
+    fn request_code(&self) -> RequestCode;
+}
+
+pub trait NotifyCode {
+    fn notification_code(&self) -> NotificationCode;
+}
+
+// Code Enums
+
+#[derive(Debug)]
+pub enum SyncCode {
+    Sync = 1,
+}
+
+#[derive(Debug, Clone)]
+pub enum DataCode {
+    ClientQueryData = 1,
+    PeerQueryData = 2,
+}
+
+//[#] Data-containing Enums
 //[TODO] Create using a Procedural Macro
+
+#[derive(Clone)]
+#[enum_dispatch(ReqMetadata, Encode)]
+pub enum Request {
+    CreateTag(CreateTag),
+    EditWorkspace(EditWorkspace),
+    CreateWorkspace(CreateWorkspace),
+    AttachTag(AttachTag),
+    DeleteWorkspace(DeleteWorkspace),
+    GetWorkspaces(GetWorkspaces),
+    EditShelf(EditShelf),
+    AddShelf(AddShelf),
+    GetShelves(GetShelves),
+    RemoveShelf(RemoveShelf),
+    EditTag(EditTag),
+    DeleteTag(DeleteTag),
+    DetachTag(DetachTag),
+    StripTag(StripTag),
+    ClientQuery(ClientQuery),
+    PeerQuery(PeerQuery),
+}
+
 #[derive(Clone)]
 #[enum_dispatch(ResMetadata)]
 pub enum Response {
@@ -228,6 +315,23 @@ pub enum Response {
     PeerQueryResponse(PeerQueryResponse),
     ClientQueryResponse(ClientQueryResponse),
 }
+
+#[derive(Debug, Clone)]
+#[enum_dispatch(ResMetadata, Encode)]
+pub enum Data {
+    ClientQueryData(ClientQueryData),
+}
+
+#[derive(Debug, Clone)]
+#[enum_dispatch(NotifyMetadata, Encode)]
+pub enum Notification {
+    Heartbeat(Heartbeat),
+    Rollforward(Rollforward),
+    SuspectedDesync(SuspectedDesync),
+    PeerConnected(PeerConnected),
+}
+
+//[#] Trait Implementations
 
 impl fmt::Debug for Response {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -306,26 +410,15 @@ impl ReqCode for Data {
     }
 }
 
-//[TODO] Create using a Procedural Macro
-#[derive(Clone)]
-#[enum_dispatch(ReqMetadata, Encode)]
-pub enum Request {
-    CreateTag(CreateTag),
-    EditWorkspace(EditWorkspace),
-    CreateWorkspace(CreateWorkspace),
-    AttachTag(AttachTag),
-    DeleteWorkspace(DeleteWorkspace),
-    GetWorkspaces(GetWorkspaces),
-    EditShelf(EditShelf),
-    AddShelf(AddShelf),
-    GetShelves(GetShelves),
-    RemoveShelf(RemoveShelf),
-    EditTag(EditTag),
-    DeleteTag(DeleteTag),
-    DetachTag(DetachTag),
-    StripTag(StripTag),
-    ClientQuery(ClientQuery),
-    PeerQuery(PeerQuery),
+impl NotifyCode for Notification {
+    fn notification_code(&self) -> NotificationCode {
+        match self {
+            Notification::Heartbeat(_) => NotificationCode::Heartbeat,
+            Notification::Rollforward(_) => NotificationCode::Rollforward,
+            Notification::SuspectedDesync(_) => NotificationCode::SuspectedDesync,
+            Notification::PeerConnected(_) => NotificationCode::PeerConnected,
+        }
+    }
 }
 
 impl_res_metadata!(
@@ -367,29 +460,8 @@ impl_req_metadata!(
     ClientQuery
 );
 
-#[derive(Debug, Clone)]
-pub enum DataCode {
-    ClientQueryData = 1,
-    PeerQueryData = 2,
-}
+impl_notify_metadata!(Heartbeat, Rollforward, SuspectedDesync, PeerConnected);
 
-#[derive(Debug, Clone)]
-#[enum_dispatch(ResMetadata, Encode)]
-pub enum Data {
-    ClientQueryData(ClientQueryData),
-}
-
-#[derive(Debug)]
-pub enum NotificationCode {
-    Heartbeat = 1,
-    Operation = 2,
-    PeerConnected = 3,
-}
-
-#[derive(Debug)]
-pub enum SyncCode {
-    Sync = 1,
-}
 impl_try_from!(MessageType, Request, Response, Data, Notification, Sync);
 
 impl_try_from!(
@@ -415,7 +487,13 @@ impl_try_from!(
 
 impl_try_from!(DataCode, ClientQueryData, PeerQueryData);
 
-impl_try_from!(NotificationCode, Heartbeat, Operation, PeerConnected);
+impl_try_from!(
+    NotificationCode,
+    Heartbeat,
+    Rollforward,
+    SuspectedDesync,
+    PeerConnected
+);
 
 impl_try_from!(ActionTarget, Workspace, Shelf, Tag);
 

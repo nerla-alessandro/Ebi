@@ -73,12 +73,74 @@ impl Network {
         self.call((node_id, data)).await
     }
 
+    pub async fn send_notification(
+        &mut self,
+        node_id: NodeId,
+        notification: Notification,
+    ) -> Result<Uuid, PeerError> {
+        self.call((node_id, notification)).await
+    }
+
     pub async fn send_request(
         &mut self,
         node_id: NodeId,
         req: Request,
     ) -> Result<Response, PeerError> {
         self.call((node_id, req)).await
+    }
+}
+
+//[TODO] Separate unique post-send from shared sending code
+
+impl Service<(NodeId, Notification)> for Network {
+    //[!] Change request uuid to notification uuid
+    type Response = Uuid;
+    type Error = PeerError;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: (NodeId, Notification)) -> Self::Future {
+        let peers = self.peers.clone();
+        let clients = self.clients.clone();
+        Box::pin(async move {
+            let clients = clients.pin_owned();
+            let sender = {
+                let client = clients.iter().find(|c| c.id == req.0);
+                if let Some(client) = client {
+                    client.sender.clone()
+                } else {
+                    peers
+                        .pin()
+                        .get(&req.0)
+                        .ok_or(PeerError::PeerNotFound)?
+                        .sender
+                        .clone()
+                }
+            };
+
+            let mut payload = Vec::new();
+            let request_uuid = Uuid::new_v4();
+
+            let req = req.1.clone();
+            req.metadata().as_mut().unwrap().notification_uuid = request_uuid.as_bytes().to_vec();
+            req.encode(&mut payload).unwrap();
+            let mut buffer = vec![0; HEADER_SIZE];
+            buffer[0] = MessageType::Data as u8;
+            buffer[1] = req.notification_code() as u8;
+            let size = payload.len() as u64;
+            buffer[2..HEADER_SIZE].copy_from_slice(&size.to_le_bytes());
+            buffer.extend_from_slice(&payload);
+
+            sender
+                .send((request_uuid, buffer))
+                .await
+                .map_err(|_| PeerError::ConnectionClosed)?;
+
+            Ok(request_uuid)
+        })
     }
 }
 
