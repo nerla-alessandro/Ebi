@@ -255,9 +255,8 @@ impl Ord for OrderedFileSummary {
                 .metadata
                 .size
                 .cmp(&other.file_summary.metadata.size),
-
             FileOrder::Unordered => {
-                todo!();
+                std::cmp::Ordering::Equal
             }
         }
     }
