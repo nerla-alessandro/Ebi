@@ -61,7 +61,7 @@ message CreateWorkspace { //[x]
   RequestMetadata metadata = 3;
 } 
 
-message EditWorkspace { //[x] //[?] Fields are Option<String> ??
+message EditWorkspace { //[x] // All fields are filled by the edit operation (with current values if unchanged)
   bytes workspace_id = 1;
   string name = 2;
   string description = 3;
@@ -291,20 +291,27 @@ message File {
 
 //[#] Notification Protocol 
 
+message NotificationMetadata {
+  bytes notification_uuid = 1;
+  bytes source_id = 2;
+}
+
 message Heartbeat { //[/] Gossip Protocol Message - Weak Connections 
-  bytes heartbeat_uuid = 1; 
-  bytes state_hash = 2; // Hash of the current state
+  bytes state_hash = 1; // Hash of the current state
   // Will contain more data 
+  NotificationMetadata metadata = 2; 
 }
 
 message Rollforward {
-  bytes heartbeat_uuid = 1;
+  bytes token = 1;
   repeated bytes states = 2;
+  NotificationMetadata metadata = 3;
 }
 
-message SuspectedDesync { // Identical to Heartbeat (for now)
-  bytes heartbeat_uuid = 1;
+message SuspectedDesync {
+  bytes token = 1;
   bytes state_hash = 2; // So the other node can compare (and Rollforward if possible, Synchronise otherwise)
+  NotificationMetadata metadata = 3;
 }
 
 //[#] Network 
@@ -312,6 +319,7 @@ message SuspectedDesync { // Identical to Heartbeat (for now)
 message PeerConnected {
   bytes peer_id = 1;
   string name = 2;
+  NotificationMetadata metadata = 3;
 }
 
 // [!] Old ?? 
