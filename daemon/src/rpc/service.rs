@@ -3,7 +3,7 @@ use ebi_filesystem::service::{FileSystem, ShelfDirKey};
 use ebi_network::service::Network;
 use ebi_proto::rpc::*;
 use ebi_query::service::QueryService;
-use ebi_state::service::{State, StateOrder};
+use ebi_state::service::StateService;
 use ebi_types::shelf::{ShelfId, ShelfOwner, ShelfType};
 use ebi_types::*;
 use iroh::NodeId;
@@ -21,7 +21,7 @@ use tower::Service;
 pub struct RpcService {
     pub daemon_info: Arc<DaemonInfo>,
     pub network: Network,
-    pub state: State,
+    pub state: StateService,
     pub filesys: FileSystem,
     pub query_srv: QueryService,
     pub tasks: Arc<HashMap<TaskID, JoinHandle<()>>>,
@@ -889,50 +889,6 @@ impl Service<CreateTag> for RpcService {
                 tag_id: Some(tag_id.into_bytes().to_vec()),
                 metadata: Some(metadata),
             })
-        })
-    }
-}
-
-//[TODO] Heartbeat scheduling 
-impl Service<Heartbeat> for RpcService {
-    type Response = Option<()>;
-    type Error = Status;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>; 
-
-    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, req: Heartbeat) -> Self::Future {
-        let state = self.state.clone();
-        Box::pin(async move {
-            let uuid = req.heartbeat_uuid;
-            let node_state = req.state_hash;
-
-            if uuid.is_empty() || node_state.is_empty() {
-                return Err(ReturnCode::MalformedRequest.into());
-            }
-
-            let state_hash = u128::from_le_bytes(
-                node_state[..16].try_into().map_err(|_| ReturnCode::MalformedRequest)?
-            );
-
-            match state.compare_state(state_hash).await {
-                StateOrder::Diverged => {
-                    todo!("Spin thread to send SuspectedDesync"); //[!]
-                }
-                StateOrder::Ahead(n) => { 
-                    todo!("Spin thread to send Rollforward with {n} states"); //[!]
-                }
-                StateOrder::Equal => {
-                    Ok(None) // Do Nothing 
-                }
-                StateOrder::None => {
-                    todo!("Spin thread to send SuspectedDesync (Synchronisation SOP - no local states)"); //[!]
-                }
-            }
-
-            // Other operations can be added here (that's why we're spinning threads)
         })
     }
 }

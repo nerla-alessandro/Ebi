@@ -7,7 +7,7 @@ use ebi_filesystem::service::FileSystem;
 use ebi_network::service::{Client, Network, Peer};
 use ebi_proto::rpc::*;
 use ebi_query::service::QueryService;
-use ebi_state::{cache::CacheService, service::State};
+use ebi_state::{cache::CacheService, service::StateService};
 use ebi_types::{RequestId, Uuid};
 use iroh::{Endpoint, NodeId, SecretKey};
 use papaya::{HashMap, HashSet};
@@ -139,7 +139,7 @@ async fn main() -> Result<()> {
     let db_path = PathBuf::from("db-save.redb");
 
     let filesys = FileSystem::new(&fs_db_path).unwrap();
-    let state = State::new(&db_path).unwrap();
+    let state = StateService::new(&db_path).unwrap();
 
     let network = Network {
         peers: peers.clone(),

@@ -139,7 +139,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct StatefulMap<K, V>
 where
     K: Hash + std::cmp::Eq + Clone,

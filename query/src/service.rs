@@ -3,7 +3,7 @@ use ebi_filesystem::service::ShelfDirKey;
 use ebi_filesystem::shelf::TagFilter;
 use ebi_filesystem::{file::gen_summary, service::FileSystem, shelf::ShelfData, shelf::merge};
 use ebi_network::service::Network;
-use ebi_state::{cache::CacheService, service::State};
+use ebi_state::{cache::CacheService, service::StateService};
 use ebi_types::file::{FileOrder, OrderedFileSummary};
 use ebi_types::shelf::Shelf;
 use ebi_types::{FileId, ImmutRef, NodeId, Uuid, parse_peer_id, uuid};
@@ -37,7 +37,7 @@ pub type TokenId = Uuid;
 pub struct QueryService {
     pub network: Network,
     pub cache: CacheService,
-    pub state: State,
+    pub state: StateService,
     pub filesys: FileSystem,
     pub daemon_id: Arc<NodeId>,
 }

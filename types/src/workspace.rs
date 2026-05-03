@@ -5,7 +5,7 @@ use crate::{ImmutRef, InfoState, SharedRef, StatefulField, StatefulMap, Stateful
 
 pub type WorkspaceId = Uuid;
 
-#[derive(Debug)]
+#[derive(PartialEq, Eq, Hash, Debug)]
 pub struct Workspace<TagFilter> {
     // Workspace Info
     pub info: StatefulRef<WorkspaceInfo, ()>,

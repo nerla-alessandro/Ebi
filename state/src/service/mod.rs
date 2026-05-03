@@ -1,6 +1,5 @@
 mod state;
 mod workspace;
 
-pub use state::State;
-pub use state::StateOrder;
-pub use workspace::WorkspaceState;
+pub use state::StateService;
+pub use workspace::WorkspaceStateService;

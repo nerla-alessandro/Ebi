@@ -97,7 +97,7 @@ pub trait Storable: Sized {
 
     fn to_storable(&self) -> Bincode<Self>;
 }
-#[derive(Debug)]
+#[derive(PartialEq, Eq, Debug)]
 pub struct Bincode<T: Storable>(pub T::Storable);
 
 impl<T> Clone for Bincode<T>
@@ -201,6 +201,17 @@ impl<K, V> Storable for HashMap<K, V>
 where
     K: for<'a> Deserialize<'a> + Serialize + Clone + Debug + Eq + std::hash::Hash + 'static,
     V: for<'a> Deserialize<'a> + Serialize + Clone + Debug + 'static,
+{
+    type Storable = Self;
+
+    fn to_storable(&self) -> Bincode<Self> {
+        Bincode(self.clone())
+    }
+}
+
+impl<T> Storable for Vec<T>
+where
+    T: for<'a> Deserialize<'a> + Serialize + Clone + Debug + 'static,
 {
     type Storable = Self;
 

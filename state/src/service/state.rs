@@ -1,14 +1,14 @@
-use crate::CRDT;
+use crate::Shelf;
+use crate::SyncState;
 use crate::Workspace;
 use crate::redb::*;
-use crate::service::WorkspaceState;
-use crate::{StateChain, StateView};
+use crate::service::workspace::WorkspaceStateService;
 use ::redb::Database;
-use arc_swap::ArcSwap;
 use ebi_proto::rpc::ReturnCode;
 use ebi_types::redb::Storable;
 use ebi_types::workspace::{WorkspaceId, WorkspaceInfo};
 use ebi_types::{Uuid, sharedref::*, stateful::*};
+use papaya::HashSet;
 use redb::{Error, ReadableTable};
 use std::path::PathBuf;
 use std::{
@@ -17,132 +17,34 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-use tokio::sync::RwLock;
 use tower::Service;
 
+pub type ShelfRef = <ImmutRef<Shelf> as Ref<Shelf, Uuid>>::Weak;
+
 #[derive(Clone)]
-pub struct State {
-    pub chain: Arc<ArcSwap<StateChain>>,
-    pub lock: Arc<RwLock<()>>,
+pub struct StateService {
+    pub sync_states: Arc<HashSet<SharedRef<SyncState<Workspace>>>>,
+    pub shelves: Arc<HashSet<ShelfRef>>,
     pub db: Arc<Database>,
 }
 
-pub enum StateOrder {
-    Equal,
-    Ahead(usize),
-    Diverged, // Behind / Forked
-    None,     // Empty chain
-}
-
-impl State {
+impl StateService {
     pub fn new(db_path: &PathBuf) -> Result<Self, Error> {
-        let lock = Arc::new(RwLock::new(()));
         let db = Database::create(db_path)?;
-        let chain = Arc::new(ArcSwap::new(StateChain::new(StateView::new()).into()));
-        let write_txn = db.begin_write()?;
-        let loaded_chain = chain.load();
-        write_txn.open_table(T_ENTITY_STATE)?.insert(
-            loaded_chain.staged.id,
-            std::collections::HashMap::new().to_storable(),
-        )?;
-        write_txn
-            .open_table(T_STATE_STATUS)?
-            .insert(loaded_chain.staged.id, StateStatus::Staged.to_storable())?;
-        write_txn.commit()?;
+        let sync_states = Arc::new(HashSet::new().into());
+        let shelves = Arc::new(HashSet::new());
 
         Ok(Self {
-            chain,
-            lock: lock.clone(),
+            sync_states,
+            shelves,
             db: Arc::new(db),
         })
     }
 
-    pub async fn sync_state(&mut self, _new_ops: CRDT) {
-        let lock = self.lock.write().await;
-        let chain = self.chain.load();
-        let (new_chain, rem_state) = chain.next();
-        let write_txn = self.db.begin_write().unwrap();
-        let prev_staged = &chain.staged;
-        let new_staged = &new_chain.staged;
-        {
-            let mut state_t = write_txn.open_table(T_STATE_STATUS).unwrap();
-            state_t
-                .insert(new_staged.id, StateStatus::Staged.to_storable())
-                .unwrap();
-
-            // [TODO] apply new ops to staged
-            let (ord, prev_state) = {
-                if let Some(past_state) = chain.synced.front() {
-                    match state_t.get(past_state.id).unwrap().unwrap().value().0 {
-                        StateStatus::Synced(val) => {
-                            // [TODO] apply new ops to past_state
-                            (val - 1, past_state)
-                        }
-                        _ => unreachable!(),
-                    }
-                } else {
-                    (u64::MAX, prev_staged)
-                }
-            };
-
-            state_t
-                .insert(prev_state.id, StateStatus::Synced(ord).to_storable())
-                .unwrap();
-
-            let mut entity_t = write_txn.open_table(T_ENTITY_STATE).unwrap();
-            let staged = entity_t
-                .get(prev_staged.id)
-                .unwrap()
-                .unwrap()
-                .value()
-                .0
-                .clone();
-            entity_t
-                .insert(new_staged.id, staged.to_storable())
-                .unwrap();
-
-            if let Some(rem_id) = rem_state {
-                state_t.remove(rem_id).unwrap();
-                let _old_map = entity_t.remove(rem_id).unwrap();
-                // [TODO] delete elements that are in old map but
-                // not contained in next state
-            }
-        }
-        write_txn.commit().unwrap();
-        self.chain.store(Arc::new(new_chain));
-        drop(lock);
-    }
-
-    pub async fn compare_state(&self, mut state: u128) -> StateOrder {
-        let mut chain = self.chain.load_full().hash_synced();
-        let latest = chain.pop();
-        if let Some(latest) = latest {
-            if state == latest {
-                // Same state
-                StateOrder::Equal
-            } else {
-                let mut counter = 1;
-                for s in chain {
-                    if state == s {
-                        // Found common state
-                        return StateOrder::Ahead(counter);
-                    }
-                    state = state ^ s;
-                    counter += 1;
-                }
-                // No common state found
-                StateOrder::Diverged
-            }
-        } else {
-            // Empty chain
-            StateOrder::None
-        }
-    }
-
-    pub fn workspace(&mut self, id: WorkspaceId) -> WorkspaceState {
-        WorkspaceState {
+    pub fn workspace(&mut self, id: WorkspaceId) -> WorkspaceStateService {
+        WorkspaceStateService {
             service: self.clone(),
-            workspace_scope: id,
+            scope: id,
         }
     }
 
@@ -172,7 +74,7 @@ struct GetWorkspace {
     id: WorkspaceId,
 }
 
-impl Service<GetWorkspace> for State {
+impl Service<GetWorkspace> for StateService {
     type Response = ImmutRef<Workspace>;
     type Error = ReturnCode;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
@@ -182,11 +84,13 @@ impl Service<GetWorkspace> for State {
     }
 
     fn call(&mut self, req: GetWorkspace) -> Self::Future {
-        let state = self.chain.load().staged.load();
+        let sync_states = self.sync_states.clone();
         Box::pin(async move {
-            if let Some(workspace) = state.workspaces.get(&req.id) {
-                let immut_ref = ImmutRef::new(workspace.id, workspace.load_full());
-                Ok(immut_ref)
+            let sync_states = sync_states.pin();
+            if let Some(wks) = sync_states.get(&req.id) {
+                let wks = wks.load();
+                let wk_staged = &wks.staged;
+                Ok(ImmutRef::new(wk_staged.id, wk_staged.load_full()))
             } else {
                 Err(ReturnCode::WorkspaceNotFound)
             }
@@ -199,7 +103,10 @@ struct CreateWorkspace {
     pub description: String,
 }
 
-impl Service<CreateWorkspace> for State {
+// This call handles the creation of the VersionStates containing the new workspace.
+// Since each workspace is associated to a single network, network creation must be handled at
+// the respective abstraction level
+impl Service<CreateWorkspace> for StateService {
     type Response = WorkspaceId;
     type Error = ReturnCode;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
@@ -209,10 +116,10 @@ impl Service<CreateWorkspace> for State {
     }
 
     fn call(&mut self, req: CreateWorkspace) -> Self::Future {
-        let state = self.chain.load_full();
+        let sync_states = self.sync_states.clone();
         let db = self.db.clone();
         Box::pin(async move {
-            let w_state = SwapRef::new_ref((), ()); // [TODO] Spawn bloom filters
+            let w_state = SharedRef::new_ref((), ()); // [TODO] Spawn bloom filters
             let workspace = Workspace {
                 info: StatefulRef::new_ref(
                     (),
@@ -222,45 +129,49 @@ impl Service<CreateWorkspace> for State {
                 tags: StatefulMap::new(w_state.clone()),
                 lookup: StatefulMap::new(w_state.clone()),
             };
-            let w_ref = StatefulRef::new_ref(Uuid::new_v4(), workspace);
-            let w_id = w_ref.id;
+            let sync_state = SharedRef::new_ref(Uuid::new_v4(), SyncState::new(workspace));
 
-            state
-                .staged
-                .stateful_rcu(|s| {
-                    let (u_m, u_s) = s.workspaces.insert(w_id, w_ref.clone_inner().into());
-                    let u_w = StateView {
-                        workspaces: u_m,
-                        shelves: s.shelves.clone(),
-                    };
-                    (u_w, u_s)
-                })
-                .await;
-            let staged_id = state.staged.id;
+            let sync_state_id = sync_state.id;
+            let sync_state_ref = sync_state.load();
+
+            let staged_id = sync_state_ref.staged.id;
+            let w_ref = &sync_state_ref.staged;
+
             let write_txn = db.begin_write().map_err(|_| ReturnCode::DbOpenError)?;
             {
-                let mut wk_t = write_txn
-                    .open_table(T_WKSPC)
+                let mut workspace_t = write_txn
+                    .open_table(T_WORKSPACE)
                     .map_err(|_| ReturnCode::DbTableOpenError)?;
-                let mut entity_state_t = write_txn
-                    .open_table(T_ENTITY_STATE)
+                let mut sync_state_t = write_txn
+                    .open_table(T_SYNC_STATE)
                     .map_err(|_| ReturnCode::DbTableOpenError)?;
-                let mut state_hmap = entity_state_t.get(staged_id).unwrap().unwrap().value();
-                let db_id = Uuid::new_v4();
-                wk_t.insert(db_id, w_ref.to_storable()).unwrap();
-                state_hmap.0.insert(w_id, (db_id, true));
-                entity_state_t.insert(staged_id, state_hmap).unwrap();
+                let mut workspace_entities_t = write_txn
+                    .open_table(T_WORKSPACE_ENTITIES)
+                    .map_err(|_| ReturnCode::DbTableOpenError)?;
+                sync_state_t
+                    .insert(
+                        sync_state_id,
+                        vec![WorkspaceState::new(staged_id, StateStatus::Staged).to_storable()],
+                    )
+                    .map_err(|_| ReturnCode::DbCommitError)?;
+                workspace_t
+                    .insert(staged_id, w_ref.to_storable())
+                    .map_err(|_| ReturnCode::DbCommitError)?;
+                workspace_entities_t
+                    .insert(staged_id, Vec::new())
+                    .map_err(|_| ReturnCode::DbCommitError)?;
             }
             write_txn.commit().map_err(|_| ReturnCode::DbCommitError)?;
+            sync_states.pin().insert(sync_state);
 
-            Ok(w_id)
+            Ok(sync_state_id)
         })
     }
 }
 
 struct GetWorkspaces {}
 
-impl Service<GetWorkspaces> for State {
+impl Service<GetWorkspaces> for StateService {
     type Response = Vec<ebi_proto::rpc::Workspace>;
     type Error = ReturnCode;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
@@ -270,12 +181,14 @@ impl Service<GetWorkspaces> for State {
     }
 
     fn call(&mut self, _req: GetWorkspaces) -> Self::Future {
-        let state = self.chain.load().staged.load();
+        let sync_states = self.sync_states.clone();
         Box::pin(async move {
             let mut workspace_ls = Vec::new();
-            for (_, workspace) in state.workspaces.iter() {
+            let sync_states = sync_states.pin();
+            for g_state in sync_states.iter() {
+                let workspace = &g_state.load().staged.load();
                 let mut tag_ls = Vec::new();
-                for tag in workspace.load().tags.values() {
+                for tag in workspace.tags.values() {
                     let tag_id = tag.id;
                     let tag = tag.load();
                     let name = tag.name.clone();
@@ -291,8 +204,7 @@ impl Service<GetWorkspaces> for State {
                         parent_id,
                     });
                 }
-                let workspace_id = workspace.id;
-                let workspace = workspace.load();
+                let workspace_id = g_state.id;
                 let wk_info = workspace.info.load();
                 let ws = ebi_proto::rpc::Workspace {
                     workspace_id: workspace_id.as_bytes().to_vec(),
@@ -311,7 +223,7 @@ struct RemoveWorkspace {
     pub workspace_id: WorkspaceId,
 }
 
-impl Service<RemoveWorkspace> for State {
+impl Service<RemoveWorkspace> for StateService {
     type Response = ();
     type Error = ReturnCode;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
@@ -321,41 +233,39 @@ impl Service<RemoveWorkspace> for State {
     }
 
     fn call(&mut self, req: RemoveWorkspace) -> Self::Future {
-        let chain = self.chain.load_full();
+        let sync_states = self.sync_states.clone();
         let db = self.db.clone();
         Box::pin(async move {
-            chain
-                .staged
-                .stateful_rcu(|s| {
-                    let (u_m, u_s) = s.workspaces.remove(&req.workspace_id);
-                    let u_g = StateView {
-                        shelves: s.shelves.clone(),
-                        workspaces: u_m,
-                    };
-                    (u_g, u_s)
-                })
-                .await;
-            let staged_id = chain.staged.id;
+            let sync_states = sync_states.pin();
+            let Some(sync_state) = sync_states.get(&req.workspace_id) else {
+                return Err(ReturnCode::WorkspaceNotFound);
+            };
+            sync_states.remove(&req.workspace_id);
+
             let write_txn = db.begin_write().map_err(|_| ReturnCode::DbOpenError)?;
             {
-                let mut _wk_t = write_txn
-                    .open_table(T_WKSPC)
+                let mut sync_state_t = write_txn
+                    .open_table(T_SYNC_STATE)
                     .map_err(|_| ReturnCode::DbTableOpenError)?;
-                let mut entity_state_t = write_txn
-                    .open_table(T_ENTITY_STATE)
+                let mut workspace_t = write_txn
+                    .open_table(T_WORKSPACE)
                     .map_err(|_| ReturnCode::DbTableOpenError)?;
-                let mut state_hmap = entity_state_t.get(staged_id).unwrap().unwrap().value();
-                let (_db_id, _) = state_hmap
-                    .0
-                    .get(&req.workspace_id)
-                    .ok_or(ReturnCode::InternalStateError)?;
-                // in order to delete, need to check if any state contains the wk
-                /*
-                wk_t.remove(db_id)
-                    .map_err(|_| ReturnCode::InternalStateError)?;
-                */
-                state_hmap.0.remove(&req.workspace_id).unwrap();
-                entity_state_t.insert(staged_id, state_hmap).unwrap();
+                let mut workspace_entities_t = write_txn
+                    .open_table(T_WORKSPACE_ENTITIES)
+                    .map_err(|_| ReturnCode::DbTableOpenError)?;
+
+                // note: currently removing a workspace leaves orphaned T_SHELF and T_TAG
+                let states = sync_state_t.get(sync_state.id).unwrap().unwrap().value();
+
+                for state in states {
+                    workspace_t
+                        .remove(state.0.id)
+                        .map_err(|_| ReturnCode::DbCommitError)?;
+                    workspace_entities_t
+                        .remove(state.0.id)
+                        .map_err(|_| ReturnCode::DbCommitError)?;
+                }
+                sync_state_t.remove(sync_state.id).unwrap();
             }
             write_txn.commit().map_err(|_| ReturnCode::DbCommitError)?;
             Ok(())
@@ -374,7 +284,7 @@ mod tests {
         let _ = std::fs::create_dir_all(test_path.clone());
         let db_path = test_path.join("database.redb");
         let _ = std::fs::remove_file(&db_path);
-        let mut state_service = State::new(&db_path).unwrap();
+        let mut state_service = StateService::new(&db_path).unwrap();
 
         let wk_name = "workspace".to_string();
         let wk_desc = "none".to_string();
@@ -384,14 +294,16 @@ mod tests {
             .await
             .unwrap();
 
-        let staged = state_service.chain.load().staged.load();
-
-        let wk = staged.workspaces.get(&wk_id);
+        let state_wk_pin = state_service.sync_states.pin();
+        let wk = state_wk_pin.get(&wk_id);
 
         assert!(&wk.is_some());
         let wk = wk.unwrap();
-        assert_eq!(wk.load().info.load().name.get(), "workspace");
-        assert_eq!(wk.load().info.load().description.get(), "none");
+        assert_eq!(wk.load().staged.load().info.load().name.get(), "workspace");
+        assert_eq!(
+            wk.load().staged.load().info.load().description.get(),
+            "none"
+        );
     }
 
     #[tokio::test]
@@ -401,7 +313,7 @@ mod tests {
         let _ = std::fs::create_dir_all(test_path.clone());
         let db_path = test_path.join("database.redb");
         let _ = std::fs::remove_file(&db_path);
-        let mut state_service = State::new(&db_path).unwrap();
+        let mut state_service = StateService::new(&db_path).unwrap();
 
         let wk_name = "workspace".to_string();
         let wk_desc = "none".to_string();
@@ -413,9 +325,8 @@ mod tests {
 
         let _ = state_service.remove_workspace(wk_id).await.unwrap();
 
-        let staged = state_service.chain.load().staged.load();
-
-        let wk = staged.workspaces.get(&wk_id);
+        let state_wk_pin = state_service.sync_states.pin();
+        let wk = state_wk_pin.get(&wk_id);
 
         assert!(&wk.is_none());
     }
