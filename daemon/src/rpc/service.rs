@@ -35,7 +35,6 @@ pub type TaskID = u64;
 
 #[derive(Debug)]
 pub enum Notification {
-    Heartbeat(Heartbeat),
     Operation(Operation),
     PeerConnected(NodeId),
 }

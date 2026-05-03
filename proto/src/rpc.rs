@@ -218,10 +218,7 @@ pub enum RequestCode {
 
 #[derive(Debug)]
 pub enum NotificationCode {
-    Heartbeat = 1,
-    Rollforward = 2,
-    SuspectedDesync = 3,
-    PeerConnected = 4,
+    PeerConnected = 1,
 }
 
 //[#] Traits
@@ -325,9 +322,6 @@ pub enum Data {
 #[derive(Debug, Clone)]
 #[enum_dispatch(NotifyMetadata, Encode)]
 pub enum Notification {
-    Heartbeat(Heartbeat),
-    Rollforward(Rollforward),
-    SuspectedDesync(SuspectedDesync),
     PeerConnected(PeerConnected),
 }
 
@@ -413,9 +407,6 @@ impl ReqCode for Data {
 impl NotifyCode for Notification {
     fn notification_code(&self) -> NotificationCode {
         match self {
-            Notification::Heartbeat(_) => NotificationCode::Heartbeat,
-            Notification::Rollforward(_) => NotificationCode::Rollforward,
-            Notification::SuspectedDesync(_) => NotificationCode::SuspectedDesync,
             Notification::PeerConnected(_) => NotificationCode::PeerConnected,
         }
     }
@@ -460,7 +451,7 @@ impl_req_metadata!(
     ClientQuery
 );
 
-impl_notify_metadata!(Heartbeat, Rollforward, SuspectedDesync, PeerConnected);
+impl_notify_metadata!(PeerConnected);
 
 impl_try_from!(MessageType, Request, Response, Data, Notification, Sync);
 
@@ -489,9 +480,6 @@ impl_try_from!(DataCode, ClientQueryData, PeerQueryData);
 
 impl_try_from!(
     NotificationCode,
-    Heartbeat,
-    Rollforward,
-    SuspectedDesync,
     PeerConnected
 );
 

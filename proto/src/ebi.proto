@@ -296,24 +296,6 @@ message NotificationMetadata {
   bytes source_id = 2;
 }
 
-message Heartbeat { //[/] Gossip Protocol Message - Weak Connections 
-  bytes state_hash = 1; // Hash of the current state
-  // Will contain more data 
-  NotificationMetadata metadata = 2; 
-}
-
-message Rollforward {
-  bytes token = 1;
-  repeated bytes states = 2;
-  NotificationMetadata metadata = 3;
-}
-
-message SuspectedDesync {
-  bytes token = 1;
-  bytes state_hash = 2; // So the other node can compare (and Rollforward if possible, Synchronise otherwise)
-  NotificationMetadata metadata = 3;
-}
-
 //[#] Network 
 
 message PeerConnected {
